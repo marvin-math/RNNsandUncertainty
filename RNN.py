@@ -14,13 +14,13 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #input_size = 784 # 28x28
 hidden_size = 20
 num_classes = 2
-num_epochs = 100000
+num_epochs = 10000
 batch_size = 800
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
-num_layers = 6
+num_layers = 10
 
 # load data
 filename = 'data/results_hybrid.csv'
@@ -107,28 +107,28 @@ print(f'xs shape: {xs.shape}')
 print(f'ys shape: {ys.shape}')
 
 
-class RNN(nn.Module):
+class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
-        super(RNN, self).__init__()
+        super(LSTMModel, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=False, nonlinearity='relu')
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=False)
         self.fc = nn.Linear(hidden_size, num_classes)
-        self.softmax = nn.LogSoftmax(dim=2)
 
     def forward(self, x):
-        # set initial hidden states
+        # Initialize hidden state (h0) and cell state (c0) to zeros
         h0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
-
-        # forward
-        out, _ = self.rnn(x, h0)
-
+        c0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
+        
+        # Forward propagate the LSTM
+        out, _ = self.lstm(x, (h0, c0))
+        
+        # Pass the outputs through the fully connected layer
         out = self.fc(out)
-        out = self.softmax(out)
-
         return out
 
-model = RNN(input_size, hidden_size, num_layers, num_classes)
+
+model = LSTMModel(input_size, hidden_size, num_layers, num_classes)
 
 # Assuming:
 # xs: shape (n_trials_per_block, n_sequences, input_size)  e.g., (10, 600, 2)
