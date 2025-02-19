@@ -23,10 +23,12 @@ def run_probit_regression(df):
     df['Perseverance'] = (df['Action'] == df['Action'].shift(1)).astype(int)
 
     # Prepare the data
-    X = df[['V_t', 'RU', 'Perseverance']].copy()
+    X = df[['V_t', 'RU']].copy()
     X['V/TU'] = X['V_t'] / df['TU']
+    X['Perseverance'] = df['Perseverance']
     y = df['Action']  # Binary outcome variable
-    print(df.head(50))
+    #print(df.head(50))
+    print(X.head(50))
 
     # Fit a probit regression using logistic regression on a normal CDF
     model = LogisticRegression()
@@ -126,4 +128,4 @@ for name, df in datasets.items():
     print(name)
     df_result, coefficients = run_probit_regression(df)
     plot_probit_regression(*coefficients, df_result, f"Probit Regression - {name}")
-    plot_probit_regression_median(*coefficients, df_result, f"Probit Regression (Median Split) - {name}", UCB = True)
+    plot_probit_regression_median(*coefficients, df_result, f"Probit Regression (Median Split) - {name}", UCB = False)

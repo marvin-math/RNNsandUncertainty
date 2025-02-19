@@ -13,14 +13,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Hyper parameters
 hidden_size = 20
 num_classes = 2
-num_epochs = 10000
+num_epochs = 30000
 batch_size = 800
 learning_rate = 1e-3
 
-### NEW/UPDATED: Changed input_size from 2 to 3
-input_size = 3
+### NEW/UPDATED: Changed input_size to 2 (action-reward encoded in a 2D vector)
+input_size = 2
 sequence_length = 10
-num_layers = 10
+num_layers = 1
 
 # Load data
 filename = 'data/results_hybrid.csv'
@@ -51,7 +51,8 @@ test_tensor = data_tensor[:, split_idx:, :]   # (10, 120, 2)
 n_sequences = train_tensor.shape[1]
 
 # Prepare labels and inputs for next choice prediction
-### NEW/UPDATED: We now build inputs with one-hot encoded actions (2 entries) plus reward (1 entry).
+### NEW/UPDATED: Build inputs such that the reward is multiplied with the one-hot action vector.
+### Instead of [action_onehot, reward] (3 dimensions), we now get [reward, 0] if action 0, or [0, reward] if action 1.
 xs = np.zeros((train_tensor.shape[0], train_tensor.shape[1], input_size), dtype=np.float32)
 ys = np.zeros((train_tensor.shape[0], train_tensor.shape[1], 1), dtype=np.float32)
 
@@ -59,21 +60,28 @@ train_choices = train_tensor[:, :, 0].cpu().numpy()  # shape: (10, n_sequences)
 train_rewards = train_tensor[:, :, 1].cpu().numpy()    # shape: (10, n_sequences)
 
 for sess_i in range(n_sequences):
-    # Create previous actions in one-hot format.
-    ### NEW/UPDATED: Using one-hot encoding instead of a single scalar.
-    prev_actions = np.concatenate(
-        (np.array([[0, 0]]), 
-         np.array([[1, 0] if choice==0 else [0, 1] for choice in train_choices[:-1, sess_i]])), 
-         axis=0
-    )
-    prev_rewards = np.concatenate(([0], train_rewards[:-1, sess_i]))
-    xs[:, sess_i, :] = np.column_stack((prev_actions, prev_rewards))
+    # For each session, build the previous action-reward vector.
+    # Use a dummy vector [0,0] for the first trial.
+    prev_vectors = []
+    # Dummy input for first trial
+    prev_vectors.append([0, 0])
+    for t in range(1, train_tensor.shape[0]):
+        choice = train_choices[t-1, sess_i]
+        reward  = train_rewards[t-1, sess_i]
+        # Multiply reward by one-hot action vector:
+        if choice == 0:
+            vector = [reward, 0]
+        else:
+            vector = [0, reward]
+        prev_vectors.append(vector)
+    prev_vectors = np.array(prev_vectors)  # shape: (10, 2)
+    xs[:, sess_i, :] = prev_vectors
     ys[:, sess_i, 0] = train_choices[:, sess_i]
 
 xs = torch.from_numpy(xs).to(device)
 ys = torch.from_numpy(ys).to(device)
 
-print(f'xs shape: {xs.shape}')  # Expected: (seq_length, n_sequences, 3)
+print(f'xs shape: {xs.shape}')  # Expected: (seq_length, n_sequences, 2)
 print(f'ys shape: {ys.shape}')  # Expected: (seq_length, n_sequences, 1)
 
 # Define the LSTM model
@@ -94,6 +102,35 @@ class LSTMModel(nn.Module):
 
 model = LSTMModel(input_size, hidden_size, num_layers, num_classes).to(device)
 
+def repetition_penalty(logits, penalty_weight=0.1):
+    """
+    Computes a penalty that discourages repeated actions.
+    
+    Args:
+        logits: Tensor of shape (seq_len, batch_size, num_classes)
+                representing the raw output (logits) from your model.
+        penalty_weight: A scaling factor for how much to penalize repetition.
+    
+    Returns:
+        A scalar penalty value.
+    """
+    # Convert logits to probabilities with softmax along the class dimension.
+    probs = F.softmax(logits, dim=-1)  # Shape: (seq_len, batch_size, num_classes)
+    seq_len = probs.shape[0]
+    
+    penalty = 0.0
+    # For each consecutive pair of time steps, compute a measure of similarity.
+    for t in range(1, seq_len):
+        # Element-wise product over the class dimension gives a similarity measure.
+        # For each sequence in the batch, sum over classes.
+        sim = torch.sum(probs[t] * probs[t-1], dim=-1)  # Shape: (batch_size,)
+        # The higher the similarity, the more repeated the behavior.
+        # Average over the batch and add to the penalty.
+        penalty += sim.mean()
+    
+    # Multiply by a weight factor to control the impact of the penalty.
+    return penalty_weight * penalty
+
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -104,12 +141,17 @@ for epoch in range(num_epochs):
     ys_shuffled = ys[:, permutation, :]
     
     for i in range(0, n_sequences, batch_size):
-        batch_x = xs_shuffled[:, i:i+batch_size, :].to(device)  # (seq_length, batch_size, 3)
+        batch_x = xs_shuffled[:, i:i+batch_size, :].to(device)  # (seq_length, batch_size, 2)
         batch_y = ys_shuffled[:, i:i+batch_size, :].to(device)  # (seq_length, batch_size, 1)
         batch_y = batch_y.squeeze(-1).long()  # (seq_length, batch_size)
         
         outputs = model(batch_x)  # (seq_length, batch_size, num_classes)
-        loss = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
+        loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
+        # Compute the repetition penalty using the entire output sequence.
+        penalty = repetition_penalty(outputs)
+
+        # Total loss is a combination of cross-entropy and the penalty.
+        loss = loss_ce + penalty
         
         optimizer.zero_grad()
         loss.backward()
@@ -118,22 +160,27 @@ for epoch in range(num_epochs):
     if epoch % 10 == 0:
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
 
-# Prepare test data using one-hot encoding for actions
+# Prepare test data using the new encoding
 test_choices = test_tensor[:, :, 0].cpu().numpy()  # (10, n_test_sequences)
 test_rewards = test_tensor[:, :, 1].cpu().numpy()    # (10, n_test_sequences)
 
-### NEW/UPDATED: Building test inputs with one-hot action encoding.
+### NEW/UPDATED: Build test inputs with the same encoding ([reward, 0] or [0, reward])
 xs_test = np.zeros((test_tensor.shape[0], test_tensor.shape[1], input_size), dtype=np.float32)
 ys_test = np.zeros((test_tensor.shape[0], test_tensor.shape[1], 1), dtype=np.float32)
 
 for sess_i in range(test_tensor.shape[1]):
-    prev_actions = np.concatenate(
-        (np.array([[0, 0]]),
-         np.array([[1, 0] if choice==0 else [0, 1] for choice in test_choices[:-1, sess_i]])),
-         axis=0
-    )
-    prev_rewards = np.concatenate(([0], test_rewards[:-1, sess_i]))
-    xs_test[:, sess_i, :] = np.column_stack((prev_actions, prev_rewards))
+    prev_vectors = []
+    prev_vectors.append([0, 0])
+    for t in range(1, test_tensor.shape[0]):
+        choice = test_choices[t-1, sess_i]
+        reward  = test_rewards[t-1, sess_i]
+        if choice == 0:
+            vector = [reward, 0]
+        else:
+            vector = [0, reward]
+        prev_vectors.append(vector)
+    prev_vectors = np.array(prev_vectors)
+    xs_test[:, sess_i, :] = prev_vectors
     ys_test[:, sess_i, 0] = test_choices[:, sess_i]
 
 xs_test = torch.from_numpy(xs_test).to(device)
@@ -144,6 +191,7 @@ n_participants = 44
 n_blocks_pp = 20      
 n_trials_per_block = 10  
 
+### NEW/UPDATED: Set simulation input size to 2.
 model.eval()
 simulation_data = []
 global_trial = 0
@@ -152,6 +200,7 @@ with torch.no_grad():
     for participant in range(n_participants):
         for block in range(n_blocks_pp):
             mean_reward_block = np.random.normal(0, np.sqrt(100), 2)
+            # Create an input sequence for simulation with shape (n_trials, 1, input_size)
             input_seq = torch.zeros(n_trials_per_block, 1, input_size, device=device)
             
             n_states = n_trials_per_block
@@ -170,13 +219,12 @@ with torch.no_grad():
                 reward_vector = np.random.normal(mean_reward_block, np.sqrt(10), 2)
                 rnn_reward = reward_vector[rnn_action]
                 
-                ### NEW/UPDATED: Encode action as one-hot and update input_seq.
+                ### NEW/UPDATED: Encode the input as reward * one-hot vector.
                 if rnn_action == 0:
-                    one_hot_action = [1, 0]
+                    encoded_input = [rnn_reward, 0]
                 else:
-                    one_hot_action = [0, 1]
-                input_seq[trial, 0, 0:2] = torch.tensor(one_hot_action, dtype=torch.float32, device=device)
-                input_seq[trial, 0, 2] = float(rnn_reward)
+                    encoded_input = [0, rnn_reward]
+                input_seq[trial, 0, :] = torch.tensor(encoded_input, dtype=torch.float32, device=device)
                 
                 for i in range(2):
                     if rnn_action == i:
