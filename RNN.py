@@ -18,14 +18,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 hidden_size = 20
 num_classes = 2
 # Use a smaller number of epochs for cross validation:
-num_epochs_cv = 10  
-num_epochs_full = 500  # final training
+num_epochs_cv = 1000  
+num_epochs_full = 100000  # final training
 batch_size = 240
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
-num_layers = 1
+num_layers = 5
 
 filename = 'data/results_hybrid.csv'
 df = pd.read_csv(filename)
