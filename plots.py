@@ -109,6 +109,30 @@ def plot_probit_regression(coeffs, df, title, include_perseverance=True, perseve
     plt.legend()
     plt.show()
 
+def plot_thompson(df, title):
+    # Define the target TU value.
+    target_TU = 0.5  # Replace with your chosen TU value
+
+    # Option 1: Exact match (if TU values match exactly)
+    subset = df[df['TU'] == target_TU]
+
+    # Option 2: If TU values may not match exactly, use a tolerance (uncomment if needed)
+    # tolerance = 1e-6
+    # subset = df[abs(df['TU'] - target_TU) < tolerance]
+
+    # Sort the subset by V_t for a smooth plot.
+    subset = subset.sort_values(by='V_t')
+
+    # Plot probability vs V_t.
+    plt.figure(figsize=(8, 6))
+    plt.plot(subset['V_t'], subset['P_a0_thompson'], marker='o', linestyle='-')
+    plt.xlabel("Expected Value Difference (V_t)")
+    plt.ylabel("Probability (P_a0_thompson)")
+    plt.title(title)
+    plt.grid(True)
+    plt.show()
+
+
 def plot_probit_regression_median(coeffs, df, title, UCB, include_perseverance=True, perseverance_val=0):
     """
     Plot probit regression curves for a median split of uncertainty (either RU or TU).

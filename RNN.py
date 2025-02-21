@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 
 
 import torch
@@ -146,7 +145,7 @@ criterion = nn.CrossEntropyLoss()
 # 4. Cross Validation to Select the Best Incentive Weight
 # -----------------------------
 # Define candidate incentive weight values. (For example, 100 evenly spaced between 0 and 1)
-candidate_incentive_weights = np.linspace(0, 0.2, 2)
+candidate_incentive_weights = np.linspace(0, 1, 100)
 
 k = 5  # number of folds
 kf = KFold(n_splits=k, shuffle=True, random_state=42)
@@ -281,7 +280,7 @@ plt.show()
 
 #### FORWARD SIMULATION ####
 # Assume these hyperparameters (as in your training/simulation code)
-n_participants = 300
+n_participants = 301
 n_blocks_pp = 20      # number of blocks per participant
 n_trials_per_block = 10  # sequence length
 input_size = 2        # [action, reward]
