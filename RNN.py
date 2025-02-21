@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,21 +15,19 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # -----------------------------
 # Data Loading & Preprocessing (same as your original code)
 # -----------------------------
-hidden_size = 50
+hidden_size = 20
 num_classes = 2
 # Use a smaller number of epochs for cross validation:
-num_epochs_cv = 300  
-num_epochs_full = 40000  # final training
+num_epochs_cv = 10  
+num_epochs_full = 500  # final training
 batch_size = 240
 learning_rate = 1e-3
-
-#best_incentive_weight = 0.38
 
 input_size = 2
 sequence_length = 10
 num_layers = 1
 
-filename = 'data/results_thompson.csv'
+filename = 'data/results_hybrid.csv'
 df = pd.read_csv(filename)
 if filename == 'human_data.csv':
     df = df.rename(columns={"choice": "Action", "reward": "Reward"})
@@ -84,10 +85,10 @@ print(f'ys shape: {ys.shape}')  # Expected: (seq_length, n_sequences, 1)
 # -----------------------------
 # 1. Compute Target Repetition Rate from Data
 # -----------------------------
-"""def compute_target_repetition(ys):
-    
+def compute_target_repetition(ys):
+    """
     Compute the fraction of consecutive trials in which the same action occurred.
-    
+    """
     ys_np = ys.squeeze(-1).cpu().numpy().astype(int)  # shape: (seq_length, n_sequences)
     total_same = 0
     total_pairs = 0
@@ -100,16 +101,16 @@ print(f'ys shape: {ys.shape}')  # Expected: (seq_length, n_sequences, 1)
     return total_same / total_pairs if total_pairs > 0 else 0.0
 
 target_repetition = compute_target_repetition(ys)
-print(f"Target repetition rate in the data: {target_repetition:.3f}")"""
+print(f"Target repetition rate in the data: {target_repetition:.3f}")
 
 # -----------------------------
 # 2. Define the Repetition Incentive Loss Function
 # -----------------------------
-"""def repetition_incentive_loss(logits, incentive_weight=0.38, target_repetition=target_repetition):
-    
+def repetition_incentive_loss(logits, incentive_weight=0.1, target_repetition=target_repetition):
+    """
     Computes a loss term that encourages the model's repetition (computed via softmax similarities)
     to match the target repetition rate observed in the data.
-    
+    """
     probs = F.softmax(logits, dim=-1)  # shape: (seq_len, batch_size, num_classes)
     seq_len = probs.shape[0]
     rep_sum = 0.0
@@ -118,54 +119,26 @@ print(f"Target repetition rate in the data: {target_repetition:.3f}")"""
         rep_sum += sim.mean()
     avg_repetition = rep_sum / (seq_len - 1)
     loss_incentive = incentive_weight * (avg_repetition - target_repetition) ** 2
-    return loss_incentive"""
-
-def repetition_penalty(logits, penalty_weight=0.1):
-    """
-    Computes a penalty that discourages repeated actions.
-    
-    Args:
-        logits: Tensor of shape (seq_len, batch_size, num_classes)
-                representing the raw output (logits) from your model.
-        penalty_weight: A scaling factor for how much to penalize repetition.
-    
-    Returns:
-        A scalar penalty value.
-    """
-    # Convert logits to probabilities with softmax along the class dimension.
-    probs = F.softmax(logits, dim=-1)  # Shape: (seq_len, batch_size, num_classes)
-    seq_len = probs.shape[0]
-    
-    penalty = 0.0
-    # For each consecutive pair of time steps, compute a measure of similarity.
-    for t in range(1, seq_len):
-        # Element-wise product over the class dimension gives a similarity measure.
-        # For each sequence in the batch, sum over classes.
-        sim = torch.sum(probs[t] * probs[t-1], dim=-1)  # Shape: (batch_size,)
-        # The higher the similarity, the more repeated the behavior.
-        # Average over the batch and add to the penalty.
-        penalty += sim.mean()
-    
-    # Multiply by a weight factor to control the impact of the penalty.
-    return penalty_weight * penalty
+    return loss_incentive
 
 # -----------------------------
 # 3. Define the LSTM Model (unchanged)
 # -----------------------------
-class LSTMModel(nn.Module):
+class GRUModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
-        super(LSTMModel, self).__init__()
+        super(GRUModel, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=False)
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=False)
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
+        # Initialize hidden state for GRU (no cell state needed)
         h0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
-        c0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
-        out, _ = self.lstm(x, (h0, c0))
+        out, _ = self.gru(x, h0)
         out = self.fc(out)
         return out
+
 
 criterion = nn.CrossEntropyLoss()
 
@@ -173,7 +146,7 @@ criterion = nn.CrossEntropyLoss()
 # 4. Cross Validation to Select the Best Incentive Weight
 # -----------------------------
 # Define candidate incentive weight values. (For example, 100 evenly spaced between 0 and 1)
-candidate_incentive_weights = np.linspace(0, 1, 100)
+candidate_incentive_weights = np.linspace(0, 0.2, 2)
 
 k = 5  # number of folds
 kf = KFold(n_splits=k, shuffle=True, random_state=42)
@@ -190,7 +163,7 @@ for incentive_weight in candidate_incentive_weights:
         ys_val = ys[:, val_idx, :]
         
         # Instantiate a fresh model for this fold
-        model_cv = LSTMModel(input_size, hidden_size, num_layers, num_classes).to(device)
+        model_cv = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
         optimizer_cv = torch.optim.Adam(model_cv.parameters(), lr=learning_rate)
         
         # Train for a reduced number of epochs for speed
@@ -206,7 +179,9 @@ for incentive_weight in candidate_incentive_weights:
                 
                 outputs = model_cv(batch_x)
                 loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-                loss_incentive = repetition_penalty(outputs,penalty_weight=incentive_weight)
+                loss_incentive = repetition_incentive_loss(outputs,
+                                                           incentive_weight=incentive_weight,
+                                                           target_repetition=target_repetition)
                 loss = loss_ce + loss_incentive
                 
                 optimizer_cv.zero_grad()
@@ -219,24 +194,21 @@ for incentive_weight in candidate_incentive_weights:
             outputs_val = model_cv(xs_val)
             val_batch_y = ys_val.squeeze(-1).long()
             loss_ce_val = criterion(outputs_val.view(-1, num_classes), val_batch_y.view(-1))
-            loss_incentive_val = repetition_penalty(outputs_val,
-                                                           penalty_weight=incentive_weight)
+            loss_incentive_val = repetition_incentive_loss(outputs_val,
+                                                           incentive_weight=incentive_weight,
+                                                           target_repetition=target_repetition)
             val_loss = loss_ce_val + loss_incentive_val
             fold_val_losses.append(val_loss.item())
-        # Compute average and standard error for this candidate weight
     avg_val_loss = np.mean(fold_val_losses)
-    std_val_loss = np.std(fold_val_losses)
-    se_val_loss = std_val_loss / np.sqrt(len(fold_val_losses))
-    incentive_results[incentive_weight] = (avg_val_loss, se_val_loss)
-    print(f"Incentive Weight: {incentive_weight:.3f} - Avg. CV Loss: {avg_val_loss:.4f} (SE: {se_val_loss:.4f})")
+    incentive_results[incentive_weight] = avg_val_loss
+    print(f"Incentive Weight: {incentive_weight:.3f} - Avg. CV Loss: {avg_val_loss:.4f}")
 
-# Plot the CV loss as a function of incentive weight (line plot with error bars)
+# Plot the CV loss as a function of incentive weight (line plot)
 weights_sorted = sorted(incentive_results.keys())
-avg_losses_sorted = [incentive_results[w][0] for w in weights_sorted]
-se_losses_sorted = [incentive_results[w][1] for w in weights_sorted]
+losses_sorted = [incentive_results[w] for w in weights_sorted]
 
 plt.figure(figsize=(8, 6))
-plt.errorbar(weights_sorted, avg_losses_sorted, yerr=se_losses_sorted, marker='o', linestyle='-', color='blue', capsize=3)
+plt.plot(weights_sorted, losses_sorted, marker='o', linestyle='-', color='blue')
 plt.xlabel("Incentive Weight")
 plt.ylabel("Average CV Loss")
 plt.title("CV Loss vs. Incentive Weight")
@@ -250,7 +222,7 @@ print(f"Selected Best Incentive Weight: {best_incentive_weight:.3f}")
 # -----------------------------
 # 5. Final Training on Full Training Set Using the Best Incentive Weight
 # -----------------------------
-model_final = LSTMModel(input_size, hidden_size, num_layers, num_classes).to(device)
+model_final = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
 optimizer_final = torch.optim.Adam(model_final.parameters(), lr=learning_rate)
 loss_history = []
 n_sequences_full = xs.shape[1]
@@ -269,8 +241,9 @@ for epoch in range(num_epochs_full):
         
         outputs = model_final(batch_x)
         loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-        loss_incentive = repetition_penalty(outputs,
-                                                   penalty_weight=best_incentive_weight)
+        loss_incentive = repetition_incentive_loss(outputs,
+                                                   incentive_weight=best_incentive_weight,
+                                                   target_repetition=target_repetition)
         loss = loss_ce + loss_incentive
         
         optimizer_final.zero_grad()
@@ -285,7 +258,7 @@ for epoch in range(num_epochs_full):
     if epoch % 10 == 0:
         print(f"Final Training Epoch [{epoch+1}/{num_epochs_full}], Loss: {avg_epoch_loss:.4f}")
 
-"""# Plot final training loss
+# Plot final training loss
 plt.figure(figsize=(8, 5))
 plt.plot(loss_history, label='Training Loss')
 plt.xlabel("Epoch")
@@ -304,11 +277,11 @@ plt.xlabel("Penalty Weight")
 plt.ylabel("Average CV Loss")
 plt.title("Cross Validation Loss per Penalty Weight")
 plt.grid(True)
-plt.show()"""
+plt.show()
 
 #### FORWARD SIMULATION ####
 # Assume these hyperparameters (as in your training/simulation code)
-n_participants = 150
+n_participants = 300
 n_blocks_pp = 20      # number of blocks per participant
 n_trials_per_block = 10  # sequence length
 input_size = 2        # [action, reward]

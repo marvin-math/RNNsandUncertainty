@@ -54,21 +54,20 @@ class ThompsonAgent:
       self.kalman_gain = np.zeros((self._n_actions, self.n_states))
 
   def get_choice_probs(self, state) -> np.ndarray:
-    """Compute the choice probabilities as softmax over q."""
 
-    ### my code ###
     self.V_t[state] = self.post_mean[0][state] - self.post_mean[1][state]
     sigma2_1 = self.post_variance[0][state]  # Variance of arm 1
     sigma2_2 = self.post_variance[1][state]  # Variance of arm 2
 
-    # Compute the standard deviation for the combined variance
+    # Compute total uncertainty
     self.std_dev = np.sqrt(sigma2_1 + sigma2_2)
 
-    # Calculate the probability P(a_t = 1)
+    # Calculate the probability P(a_t = 0)
     self.P_a0_thompson[state] = norm.cdf((self.V_t[state] / self.std_dev))
     #self.P_thompson[1] = 1 - self.P_thompson[0]
     ################
     return self.P_a0_thompson[state]
+
 
   def get_choice(self, state) -> int:
     """Sample a choice, given the agent's current internal state."""
@@ -399,7 +398,7 @@ else:
         print(f"  Final negative log-likelihood: {global_result.fun}\n")
 
 # Step 2: Forward Simulation Using Optimized Parameters
-n_participants = 150
+n_participants = 300
 n_block_per_p = 20
 n_trials_per_block = 10
 reward_array = np.empty([2, n_trials_per_block * n_block_per_p * n_participants], dtype=float)
