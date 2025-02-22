@@ -3,15 +3,20 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import os
+
 
 # Load datasets
 df_hybrid = pd.read_csv('data/results_hybrid.csv')
 df_thompson = pd.read_csv('data/results_thompson.csv')
 df_ucb = pd.read_csv('data/results_ucb.csv')
 df_rnn_human = pd.read_csv('data/simulation_trained_network_human.csv')
-df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson.csv')
+df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
 df_rnn_hybrid = pd.read_csv('data/simulation_trained_network_hybrid.csv')
+
+os.makedirs('plots', exist_ok=True)
+
 
 def run_probit_regression(df, include_perseverance=True):
     """
@@ -107,6 +112,8 @@ def plot_probit_regression(coeffs, df, title, include_perseverance=True, perseve
     plt.ylim(0, 1)
     plt.grid(True)
     plt.legend()
+    save_path = os.path.join('plots', f"{title.replace(' ', '_')}.png")
+    plt.savefig(save_path)
     plt.show()
 
 def plot_thompson(df, title):
@@ -194,21 +201,25 @@ def plot_probit_regression_median(coeffs, df, title, UCB, include_perseverance=T
     plt.ylim(0, 1)
     plt.legend()
     plt.grid(True)
+
+
+    save_path = os.path.join('plots', f"{title.replace(' ', '_')}.png")
+    plt.savefig(save_path)
     plt.show()
 
 # Choose whether to include the perseverance factor
 include_perseverance = True  # Change to False if you wish to exclude it
-UCB = False
+UCB = True
 
 # Define your datasets for processing
 datasets = {
-    "Hybrid Model": df_hybrid,
-    #"Thompson Model": df_thompson,
+    #"Hybrid Model": df_hybrid,
+    "Thompson Model": df_thompson,
     # "UCB Model": df_ucb,
     # "RNN Model": df_rnn_human,
-    #"RNN Thompson": df_rnn_thompson,
+    "RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
-    "RNN Hybrid": df_rnn_hybrid
+    #"RNN Hybrid": df_rnn_hybrid
 }
 
 # Process each dataset
@@ -217,5 +228,5 @@ for name, df in datasets.items():
     df_result, coefficients = run_probit_regression(df, include_perseverance=include_perseverance)
     plot_probit_regression(coefficients, df_result, f"Probit Regression - {name}",
                            include_perseverance=include_perseverance, perseverance_val=0)
-    plot_probit_regression_median(coefficients, df_result, f"Probit Regression (Median Split) - {name}",
+    plot_probit_regression_median(coefficients, df_result, f"Probit Regression (Median Split, RU) - {name}",
                                   UCB=UCB, include_perseverance=include_perseverance, perseverance_val=0)

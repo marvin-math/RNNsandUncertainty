@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +18,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 hidden_size = 20
 num_classes = 2
 # Use a smaller number of epochs for cross validation:
-num_epochs_cv = 1000  
+num_epochs_cv = 200  
 num_epochs_full = 100000  # final training
 batch_size = 240
 learning_rate = 1e-3
@@ -205,6 +206,8 @@ for incentive_weight in candidate_incentive_weights:
 # Plot the CV loss as a function of incentive weight (line plot)
 weights_sorted = sorted(incentive_results.keys())
 losses_sorted = [incentive_results[w] for w in weights_sorted]
+fig_title = "Cross_Validation_Loss_per_Penalty_Weight"
+
 
 plt.figure(figsize=(8, 6))
 plt.plot(weights_sorted, losses_sorted, marker='o', linestyle='-', color='blue')
@@ -212,6 +215,8 @@ plt.xlabel("Incentive Weight")
 plt.ylabel("Average CV Loss")
 plt.title("CV Loss vs. Incentive Weight")
 plt.grid(True)
+save_path = os.path.join('plots', f"{fig_title.replace(' ', '_')}.png")
+plt.savefig(save_path)
 plt.show()
 
 # Select the best incentive weight (lowest CV loss)
@@ -257,30 +262,10 @@ for epoch in range(num_epochs_full):
     if epoch % 10 == 0:
         print(f"Final Training Epoch [{epoch+1}/{num_epochs_full}], Loss: {avg_epoch_loss:.4f}")
 
-# Plot final training loss
-plt.figure(figsize=(8, 5))
-plt.plot(loss_history, label='Training Loss')
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.title(f"Training Loss (Best Incentive Weight = {best_incentive_weight:.3f})")
-plt.legend()
-plt.show()
-
-# Sort the keys so that the line plot connects points in order.
-penalty_weights = sorted(incentive_results.keys())
-avg_losses = [incentive_results[p] for p in penalty_weights]
-
-plt.figure(figsize=(8, 6))
-plt.plot(penalty_weights, avg_losses, marker='o', linestyle='-', color='blue')
-plt.xlabel("Penalty Weight")
-plt.ylabel("Average CV Loss")
-plt.title("Cross Validation Loss per Penalty Weight")
-plt.grid(True)
-plt.show()
 
 #### FORWARD SIMULATION ####
 # Assume these hyperparameters (as in your training/simulation code)
-n_participants = 301
+n_participants = 302
 n_blocks_pp = 20      # number of blocks per participant
 n_trials_per_block = 10  # sequence length
 input_size = 2        # [action, reward]
@@ -366,9 +351,10 @@ with torch.no_grad():
                     "Kalman_kalman_gain_0": kalman_gain[0][trial],
                     "Kalman_kalman_gain_1": kalman_gain[1][trial],
                     "RU": RU[trial],
-                    "TU": TU[trial]
+                    "TU": TU[trial],
+                    "best_penalty_weight": best_incentive_weight
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_trained_network_thompson.csv", index=False)
-print("Simulation complete. Data saved to data/simulation_trained_network_hybrid.csv")
+df_simulation.to_csv("data/simulation_trained_network_thompson2_lesscross2.csv", index=False)
+print("Simulation complete. Data saved to data/simulation_trained_network_thompson2.csv")
