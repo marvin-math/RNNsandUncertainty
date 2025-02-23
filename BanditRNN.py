@@ -398,7 +398,7 @@ else:
         print(f"  Final negative log-likelihood: {global_result.fun}\n")
 
 # Step 2: Forward Simulation Using Optimized Parameters
-n_participants = 300
+n_participants = 700
 n_block_per_p = 20
 n_trials_per_block = 10
 reward_array = np.empty([2, n_trials_per_block * n_block_per_p * n_participants], dtype=float)

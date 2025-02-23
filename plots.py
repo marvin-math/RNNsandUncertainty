@@ -13,7 +13,7 @@ df_ucb = pd.read_csv('data/results_ucb.csv')
 df_rnn_human = pd.read_csv('data/simulation_trained_network_human.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
-df_rnn_hybrid = pd.read_csv('data/simulation_trained_network_hybrid.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid.csv')
 
 os.makedirs('plots', exist_ok=True)
 
@@ -208,18 +208,18 @@ def plot_probit_regression_median(coeffs, df, title, UCB, include_perseverance=T
     plt.show()
 
 # Choose whether to include the perseverance factor
-include_perseverance = True  # Change to False if you wish to exclude it
-UCB = True
+include_perseverance = False  # Change to False if you wish to exclude it
+UCB = False
 
 # Define your datasets for processing
 datasets = {
-    #"Hybrid Model": df_hybrid,
-    "Thompson Model": df_thompson,
+    "Hybrid Model": df_hybrid,
+    #"Thompson Model": df_thompson,
     # "UCB Model": df_ucb,
     # "RNN Model": df_rnn_human,
-    "RNN Thompson": df_rnn_thompson,
+    #"RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
-    #"RNN Hybrid": df_rnn_hybrid
+    "RNN Hybrid": df_rnn_hybrid
 }
 
 # Process each dataset

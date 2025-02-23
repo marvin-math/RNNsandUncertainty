@@ -18,14 +18,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 hidden_size = 20
 num_classes = 2
 # Use a smaller number of epochs for cross validation:
-num_epochs_cv = 200  
+num_epochs_cv = 250  
 num_epochs_full = 100000  # final training
-batch_size = 240
+batch_size = 800
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
-num_layers = 5
+num_layers = 10
 
 filename = 'data/results_hybrid.csv'
 df = pd.read_csv(filename)
@@ -265,7 +265,7 @@ for epoch in range(num_epochs_full):
 
 #### FORWARD SIMULATION ####
 # Assume these hyperparameters (as in your training/simulation code)
-n_participants = 302
+n_participants = 300
 n_blocks_pp = 20      # number of blocks per participant
 n_trials_per_block = 10  # sequence length
 input_size = 2        # [action, reward]
@@ -352,9 +352,10 @@ with torch.no_grad():
                     "Kalman_kalman_gain_1": kalman_gain[1][trial],
                     "RU": RU[trial],
                     "TU": TU[trial],
-                    "best_penalty_weight": best_incentive_weight
+                    "best_penalty_weight": best_incentive_weight,
+                    "num_layers": num_layers
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_trained_network_thompson2_lesscross2.csv", index=False)
-print("Simulation complete. Data saved to data/simulation_trained_network_thompson2.csv")
+df_simulation.to_csv("data/simulation_RNN_hybrid_more_latents.csv", index=False)
+print("Simulation complete. Data saved")
