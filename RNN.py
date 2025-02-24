@@ -15,17 +15,17 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # -----------------------------
 # Data Loading & Preprocessing (same as your original code)
 # -----------------------------
-hidden_size = 20
+hidden_size = 100
 num_classes = 2
 # Use a smaller number of epochs for cross validation:
-num_epochs_cv = 250  
-num_epochs_full = 100000  # final training
-batch_size = 240
+num_epochs_cv = 50  
+num_epochs_full = 50000  # final training
+batch_size = 256
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
-num_layers = 10
+num_layers = 1
 
 filename = 'human_data.csv'
 df = pd.read_csv(filename)
@@ -360,5 +360,5 @@ with torch.no_grad():
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_RNN_human_ten_layers_L2_ce_240batch.csv", index=False)
+df_simulation.to_csv("data/simulation_RNN_human_one_layer_L2_ce_100neurons.csv", index=False)
 print("Simulation complete. Data saved")
