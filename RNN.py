@@ -7,27 +7,25 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import optuna
 from sklearn.model_selection import KFold
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # -----------------------------
-# Data Loading & Preprocessing (same as your original code)
+# Data Loading & Preprocessing
 # -----------------------------
-hidden_size = 100
+hidden_size_default = 100  # default value; can be optimized too
 num_classes = 2
-# Use a smaller number of epochs for cross validation:
-num_epochs_cv = 50  
-num_epochs_full = 50000  # final training
+num_epochs_cv = 300      # reduced epochs for CV
+num_epochs_full = 150000  # final training
 batch_size = 256
-learning_rate = 1e-3
-
 input_size = 2
 sequence_length = 10
 num_layers = 1
 
-filename = 'human_data.csv'
+filename = 'data/results_hybrid.csv'
 df = pd.read_csv(filename)
 if filename == 'human_data.csv':
     df = df.rename(columns={"choice": "Action", "reward": "Reward"})
@@ -106,12 +104,12 @@ print(f"Target repetition rate in the data: {target_repetition:.3f}")
 # -----------------------------
 # 2. Define the Repetition Incentive Loss Function
 # -----------------------------
-def repetition_incentive_loss(logits, incentive_weight=0.1, target_repetition=target_repetition):
+def repetition_incentive_loss(logits, incentive_weight, target_repetition=target_repetition):
     """
-    Computes a loss term that encourages the model's repetition (computed via softmax similarities)
+    Computes a loss term that encourages the model's repetition (via softmax similarities)
     to match the target repetition rate observed in the data.
     """
-    probs = F.softmax(logits, dim=-1)  # shape: (seq_len, batch_size, num_classes)
+    probs = F.softmax(logits, dim=-1)  # (seq_len, batch_size, num_classes)
     seq_len = probs.shape[0]
     rep_sum = 0.0
     for t in range(1, seq_len):
@@ -122,7 +120,7 @@ def repetition_incentive_loss(logits, incentive_weight=0.1, target_repetition=ta
     return loss_incentive
 
 # -----------------------------
-# 3. Define the GRU Model (unchanged)
+# 3. Define the GRU Model
 # -----------------------------
 class GRUModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
@@ -133,40 +131,38 @@ class GRUModel(nn.Module):
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
-        # Initialize hidden state for GRU (no cell state needed)
+        # Initialize hidden state for GRU
         h0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
         out, _ = self.gru(x, h0)
         out = self.fc(out)
         return out
 
-
 criterion = nn.CrossEntropyLoss()
 
 # -----------------------------
-# 4. Cross Validation to Select the Best Incentive Weight
+# 4. Hyperparameter Optimization with Optuna (with SQLite storage for dashboard)
 # -----------------------------
-# Define candidate incentive weight values. (For example, 100 evenly spaced between 0 and 1)
-candidate_incentive_weights = np.linspace(0, 1, 100)
-
-k = 5  # number of folds
-kf = KFold(n_splits=k, shuffle=True, random_state=42)
-incentive_results = {}  # maps candidate_incentive_weight -> average CV loss
-
-print("Starting cross validation...")
-for incentive_weight in candidate_incentive_weights:
+def objective(trial):
+    # Suggest hyperparameters
+    incentive_weight = trial.suggest_float('incentive_weight', 0.0, 1.0)
+    learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
+    hidden_size = trial.suggest_int('hidden_size', 50, 200)
+    
+    k = 5  # number of CV folds
+    kf = KFold(n_splits=k, shuffle=True, random_state=42)
     fold_val_losses = []
+    
+    # Cross-validation loop
     for train_idx, val_idx in kf.split(range(n_sequences)):
-        # Create fold-specific datasets
         xs_train = xs[:, train_idx, :]
         ys_train = ys[:, train_idx, :]
         xs_val = xs[:, val_idx, :]
         ys_val = ys[:, val_idx, :]
         
-        # Instantiate a fresh model for this fold
         model_cv = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
         optimizer_cv = torch.optim.Adam(model_cv.parameters(), lr=learning_rate, weight_decay=1e-4)
         
-        # Train for a reduced number of epochs for speed
+        # Training for a reduced number of epochs
         for epoch in range(num_epochs_cv):
             permutation = torch.randperm(xs_train.shape[1])
             xs_shuffled = xs_train[:, permutation, :]
@@ -175,60 +171,48 @@ for incentive_weight in candidate_incentive_weights:
             for i in range(0, xs_train.shape[1], batch_size):
                 batch_x = xs_shuffled[:, i:i+batch_size, :].to(device)
                 batch_y = ys_shuffled[:, i:i+batch_size, :].to(device)
-                batch_y = batch_y.squeeze(-1).long()  # shape: (seq_length, batch_size)
+                batch_y = batch_y.squeeze(-1).long()
                 
                 outputs = model_cv(batch_x)
                 loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-                loss_incentive = repetition_incentive_loss(outputs,
-                                                           incentive_weight=incentive_weight,
-                                                           target_repetition=target_repetition)
+                loss_incentive = repetition_incentive_loss(outputs, incentive_weight)
                 loss = loss_ce + loss_incentive
                 
                 optimizer_cv.zero_grad()
                 loss.backward()
                 optimizer_cv.step()
         
-        # Evaluate on the validation fold
+        # Evaluation on the validation fold
         model_cv.eval()
         with torch.no_grad():
             outputs_val = model_cv(xs_val)
             val_batch_y = ys_val.squeeze(-1).long()
             loss_ce_val = criterion(outputs_val.view(-1, num_classes), val_batch_y.view(-1))
-            loss_incentive_val = repetition_incentive_loss(outputs_val,
-                                                           incentive_weight=incentive_weight,
-                                                           target_repetition=target_repetition)
+            loss_incentive_val = repetition_incentive_loss(outputs_val, incentive_weight)
             val_loss = loss_ce_val + loss_incentive_val
             fold_val_losses.append(val_loss.item())
+    
     avg_val_loss = np.mean(fold_val_losses)
-    incentive_results[incentive_weight] = avg_val_loss
-    print(f"Incentive Weight: {incentive_weight:.3f} - Avg. CV Loss: {avg_val_loss:.4f}")
+    return avg_val_loss
 
-# Plot the CV loss as a function of incentive weight (line plot)
-weights_sorted = sorted(incentive_results.keys())
-losses_sorted = [incentive_results[w] for w in weights_sorted]
-fig_title = "Cross_Validation_Loss_per_Penalty_Weight"
+# Use SQLite storage to log the study so that the dashboard can display the results.
+storage_name = "sqlite:///optuna_study.db"
+study = optuna.create_study(storage=storage_name, load_if_exists=True, direction='minimize')
+study.optimize(objective, n_trials=50)
 
-
-plt.figure(figsize=(8, 6))
-plt.plot(weights_sorted, losses_sorted, marker='o', linestyle='-', color='blue')
-plt.xlabel("Incentive Weight")
-plt.ylabel("Average CV Loss")
-plt.title("CV Loss vs. Incentive Weight")
-plt.grid(True)
-save_path = os.path.join('plots', f"{fig_title.replace(' ', '_')}.png")
-plt.savefig(save_path)
-plt.show()
-
-# Select the best incentive weight (lowest CV loss)
-best_incentive_weight = min(incentive_results, key=incentive_results.get)
-print(f"Selected Best Incentive Weight: {best_incentive_weight:.3f}")
+print("Best hyperparameters:")
+print(study.best_params)
+print(f"Best CV Loss: {study.best_value:.4f}")
 
 # -----------------------------
-# 5. Final Training on Full Training Set Using the Best Incentive Weight
+# 5. Final Training on Full Training Set with Best Hyperparameters
 # -----------------------------
-model_final = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
-# added L2 norm
-optimizer_final = torch.optim.Adam(model_final.parameters(), lr=learning_rate, weight_decay=1e-4)
+best_incentive_weight = study.best_params['incentive_weight']
+best_learning_rate = study.best_params['learning_rate']
+best_hidden_size = study.best_params['hidden_size']
+
+model_final = GRUModel(input_size, best_hidden_size, num_layers, num_classes).to(device)
+optimizer_final = torch.optim.Adam(model_final.parameters(), lr=best_learning_rate, weight_decay=1e-4)
 loss_history = []
 n_sequences_full = xs.shape[1]
 
@@ -246,9 +230,7 @@ for epoch in range(num_epochs_full):
         
         outputs = model_final(batch_x)
         loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-        loss_incentive = repetition_incentive_loss(outputs,
-                                                   incentive_weight=best_incentive_weight,
-                                                   target_repetition=target_repetition)
+        loss_incentive = repetition_incentive_loss(outputs, best_incentive_weight)
         loss = loss_ce + loss_incentive
         
         optimizer_final.zero_grad()
@@ -263,15 +245,13 @@ for epoch in range(num_epochs_full):
     if epoch % 10 == 0:
         print(f"Final Training Epoch [{epoch+1}/{num_epochs_full}], Loss: {avg_epoch_loss:.4f}")
 
-
-#### FORWARD SIMULATION ####
-# Assume these hyperparameters (as in your training/simulation code)
+# -----------------------------
+# 6. Forward Simulation (unchanged)
+# -----------------------------
 n_participants = 300
-n_blocks_pp = 20      # number of blocks per participant
+n_blocks_pp = 20      # blocks per participant
 n_trials_per_block = 10  # sequence length
-input_size = 2        # [action, reward]
-num_classes = 2       # two-armed bandit
-innov_variance = 100  # as used in your agents
+innov_variance = 100  
 noise_variance = 10
 
 model_final.eval()
@@ -281,10 +261,8 @@ global_trial = 0
 with torch.no_grad():
     for participant in range(n_participants):
         for block in range(n_blocks_pp):
-            mean_reward_block = np.random.normal(0, np.sqrt(100), 2)
-            # Create an input sequence for simulation with shape (n_trials, 1, input_size)
+            mean_reward_block = np.random.normal(0, np.sqrt(innov_variance), 2)
             input_seq = torch.zeros(n_trials_per_block, 1, input_size, device=device)
-
             n_states = n_trials_per_block
             V_t = np.zeros(n_states)
             RU = np.zeros(n_states)  
@@ -292,23 +270,21 @@ with torch.no_grad():
             post_mean = np.zeros((2, n_states))
             post_variance = np.ones((2, n_states)) * 5
             kalman_gain = np.zeros((2, n_states))
-
+            
             for trial in range(n_trials_per_block):
                 outputs = model_final(input_seq)  # (n_trials, 1, num_classes)
-                logits_t = outputs[trial, 0, :]  # (num_classes,)
+                logits_t = outputs[trial, 0, :]  
                 probs_t = F.softmax(logits_t, dim=0).detach().cpu().numpy()
                 rnn_action = np.random.choice([0, 1], p=probs_t)
-                reward_vector = np.random.normal(mean_reward_block, np.sqrt(10), 2)
+                reward_vector = np.random.normal(mean_reward_block, np.sqrt(noise_variance), 2)
                 rnn_reward = reward_vector[rnn_action]
-
-                ### NEW/UPDATED: Encode the input as reward * one-hot vector.
+                
                 if rnn_action == 0:
                     encoded_input = [rnn_reward, 0]
                 else:
-                    
                     encoded_input = [0, rnn_reward]
                 input_seq[trial, 0, :] = torch.tensor(encoded_input, dtype=torch.float32, device=device)
-
+                
                 for i in range(2):
                     if rnn_action == i:
                         if trial == 0:
@@ -317,7 +293,7 @@ with torch.no_grad():
                         else:
                             prev_variance = post_variance[i][trial - 1]
                             prev_mean = post_mean[i][trial - 1]
-                        kalman_gain[i][trial] = prev_variance / (prev_variance + 10)
+                        kalman_gain[i][trial] = prev_variance / (prev_variance + noise_variance)
                         post_variance[i][trial] = (1 - kalman_gain[i][trial]) * prev_variance
                         post_mean[i][trial] = prev_mean + kalman_gain[i][trial] * (rnn_reward - prev_mean)
                     else:
@@ -327,13 +303,13 @@ with torch.no_grad():
                         else:
                             post_variance[i][trial] = post_variance[i][trial - 1]
                             post_mean[i][trial] = post_mean[i][trial - 1]
-
+                
                 V_t[trial] = post_mean[0][trial] - post_mean[1][trial]
                 sigma1 = post_variance[0][trial]
                 sigma2 = post_variance[1][trial]
                 TU[trial] = np.sqrt(sigma1 + sigma2)
                 RU[trial] = np.sqrt(sigma1) - np.sqrt(sigma2)
-
+                
                 simulation_data.append({
                     "Participant": participant,
                     "Block": block,
@@ -356,9 +332,14 @@ with torch.no_grad():
                     "best_penalty_weight": best_incentive_weight,
                     "num_layers": num_layers,
                     "batch_size": batch_size,
-                    "average_loss": np.mean(loss_history)
+                    "average_loss": np.mean(loss_history),
+                    "optimized_l2_weight": best_learning_rate,
+                    "hidden_size": best_hidden_size
+
                 })
                 global_trial += 1
+
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_RNN_human_one_layer_L2_ce_100neurons.csv", index=False)
+os.makedirs("data", exist_ok=True)
+df_simulation.to_csv("data/simulation_RNN_hybrid_optuna.csv", index=False)
 print("Simulation complete. Data saved")
