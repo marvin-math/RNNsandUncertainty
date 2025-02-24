@@ -10,7 +10,7 @@ import os
 df_hybrid = pd.read_csv('data/results_hybrid.csv')
 df_thompson = pd.read_csv('data/results_thompson.csv')
 df_ucb = pd.read_csv('data/results_ucb.csv')
-df_rnn_human = pd.read_csv('data/simulation_trained_network_human.csv')
+df_rnn_human = pd.read_csv('data/simulation_RNN_human_more_latents_L2.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
 df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_more_latents.csv')
@@ -218,7 +218,7 @@ datasets = {
     #"Hybrid Model": df_hybrid,
     #"Thompson Model": df_thompson,
     # "UCB Model": df_ucb,
-    "RNN Human": df_rnn_human,
+    "RNN_Human_l2_10layers": df_rnn_human,
     #"RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
     #"RNN Hybrid": df_rnn_hybrid,

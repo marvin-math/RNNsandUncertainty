@@ -20,14 +20,14 @@ num_classes = 2
 # Use a smaller number of epochs for cross validation:
 num_epochs_cv = 250  
 num_epochs_full = 100000  # final training
-batch_size = 800
+batch_size = 400
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
 num_layers = 10
 
-filename = 'human_data.csv'
+filename = 'results_hybrid.csv'
 df = pd.read_csv(filename)
 if filename == 'human_data.csv':
     df = df.rename(columns={"choice": "Action", "reward": "Reward"})
@@ -227,7 +227,8 @@ print(f"Selected Best Incentive Weight: {best_incentive_weight:.3f}")
 # 5. Final Training on Full Training Set Using the Best Incentive Weight
 # -----------------------------
 model_final = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
-optimizer_final = torch.optim.Adam(model_final.parameters(), lr=learning_rate)
+# added L2 norm
+optimizer_final = torch.optim.Adam(model_final.parameters(), lr=learning_rate, weight_decay=1e-4)
 loss_history = []
 n_sequences_full = xs.shape[1]
 
@@ -353,9 +354,11 @@ with torch.no_grad():
                     "RU": RU[trial],
                     "TU": TU[trial],
                     "best_penalty_weight": best_incentive_weight,
-                    "num_layers": num_layers
+                    "num_layers": num_layers,
+                    "batch_size": batch_size,
+                    "average_loss": np.mean(loss_history)
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_RNN_human_more_latents.csv", index=False)
+df_simulation.to_csv("data/simulation_RNN_hybrid_ten_layers_L2.csv", index=False)
 print("Simulation complete. Data saved")
