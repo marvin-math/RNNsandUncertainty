@@ -20,14 +20,14 @@ num_classes = 2
 # Use a smaller number of epochs for cross validation:
 num_epochs_cv = 250  
 num_epochs_full = 100000  # final training
-batch_size = 400
+batch_size = 240
 learning_rate = 1e-3
 
 input_size = 2
 sequence_length = 10
 num_layers = 10
 
-filename = 'results_hybrid.csv'
+filename = 'human_data.csv'
 df = pd.read_csv(filename)
 if filename == 'human_data.csv':
     df = df.rename(columns={"choice": "Action", "reward": "Reward"})
@@ -122,7 +122,7 @@ def repetition_incentive_loss(logits, incentive_weight=0.1, target_repetition=ta
     return loss_incentive
 
 # -----------------------------
-# 3. Define the LSTM Model (unchanged)
+# 3. Define the GRU Model (unchanged)
 # -----------------------------
 class GRUModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
@@ -164,7 +164,7 @@ for incentive_weight in candidate_incentive_weights:
         
         # Instantiate a fresh model for this fold
         model_cv = GRUModel(input_size, hidden_size, num_layers, num_classes).to(device)
-        optimizer_cv = torch.optim.Adam(model_cv.parameters(), lr=learning_rate)
+        optimizer_cv = torch.optim.Adam(model_cv.parameters(), lr=learning_rate, weight_decay=1e-4)
         
         # Train for a reduced number of epochs for speed
         for epoch in range(num_epochs_cv):
@@ -360,5 +360,5 @@ with torch.no_grad():
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_RNN_hybrid_ten_layers_L2.csv", index=False)
+df_simulation.to_csv("data/simulation_RNN_human_ten_layers_L2_ce_240batch.csv", index=False)
 print("Simulation complete. Data saved")
