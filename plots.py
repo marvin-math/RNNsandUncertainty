@@ -13,7 +13,7 @@ df_ucb = pd.read_csv('data/results_ucb.csv')
 df_rnn_human = pd.read_csv('data/simulation_trained_network_human.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
-df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_more_latents.csv')
 
 os.makedirs('plots', exist_ok=True)
 
@@ -90,7 +90,7 @@ def plot_probit_regression(coeffs, df, title, include_perseverance=True, perseve
     print(f'RU_fixed: {RU_fixed}, TU_fixed: {TU_fixed}')
     
     # Generate a range of V_t values for predictions
-    V_range = np.linspace(-100, 100, 1000)
+    V_range = np.linspace(-30, 30, 100)
     
     if include_perseverance:
         w1, w2, w3, w4 = coeffs
@@ -165,7 +165,7 @@ def plot_probit_regression_median(coeffs, df, title, UCB, include_perseverance=T
     high_SD = df[U > U_median]
     
     # Generate range of V_t values
-    V_range = np.linspace(-100, 100, 1000)
+    V_range = np.linspace(-30, 30, 100)
     
     # Get average RU and TU for each group
     RU_low = low_SD['RU'].mean()
@@ -228,5 +228,5 @@ for name, df in datasets.items():
     df_result, coefficients = run_probit_regression(df, include_perseverance=include_perseverance)
     plot_probit_regression(coefficients, df_result, f"Probit Regression - {name}",
                            include_perseverance=include_perseverance, perseverance_val=0)
-    plot_probit_regression_median(coefficients, df_result, f"Probit Regression (Median Split, RU) - {name}",
+    plot_probit_regression_median(coefficients, df_result, f"Probit Regression (Median Split, TU) - {name}",
                                   UCB=UCB, include_perseverance=include_perseverance, perseverance_val=0)

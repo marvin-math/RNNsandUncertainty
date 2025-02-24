@@ -309,6 +309,88 @@ class HybridAgent_opt:
       if self.current_trial % self.trials_per_session == 0:
           self.reset_priors()
 
+# apply Kalman filter to human data
+def apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10):
+    """
+    Applies the Kalman filter update to human behavioral data stored in a DataFrame.
+    The priors are reinitialized every `trials_per_session` trials.
+    
+    Parameters:
+        df (pd.DataFrame): DataFrame containing human data. Must have columns 'choice' and 'reward'.
+        noise_variance (float): The noise variance in the Kalman update.
+        initial_variance (float): The initial posterior variance for each arm.
+        trials_per_session (int): The number of trials per session after which the priors are reset.
+        
+    Returns:
+        pd.DataFrame: The DataFrame with additional columns for internal Kalman filter variables.
+    """
+    
+    n_actions = 2
+    n_trials = df.shape[0]
+    
+    # Preallocate arrays for the filter variables
+    post_mean = np.zeros((n_actions, n_trials))
+    post_variance = np.ones((n_actions, n_trials)) * initial_variance
+    kalman_gain = np.zeros((n_actions, n_trials))
+    V_t = np.zeros(n_trials)
+    
+    # Arrays to record computed quantities (to later append to df)
+    posterior_std_0 = np.zeros(n_trials)
+    posterior_std_1 = np.zeros(n_trials)
+    TU = np.zeros(n_trials)
+    RU = np.zeros(n_trials)
+    
+    # Loop through trials sequentially
+    for t in range(n_trials - 1):
+        # Record current internal state BEFORE updating at trial t.
+        V_t[t] = post_mean[0, t] - post_mean[1, t]
+        posterior_std_0[t] = post_variance[0, t]
+        posterior_std_1[t] = post_variance[1, t]
+        TU[t] = np.sqrt(post_variance[0, t] + post_variance[1, t])
+        RU[t] = np.sqrt(post_variance[0, t]) - np.sqrt(post_variance[1, t])
+        
+        # Retrieve human choice and reward for this trial.
+        # Assumes that the 'choice' column is coded as 0 or 1.
+        row = df.iloc[t]
+        choice = int(row['choice'])
+        reward = row['reward']
+        
+        # Update for the chosen arm.
+        kalman_gain[choice, t] = post_variance[choice, t] / (post_variance[choice, t] + noise_variance)
+        post_mean[choice, t+1] = post_mean[choice, t] + kalman_gain[choice, t] * (reward - post_mean[choice, t])
+        post_variance[choice, t+1] = (1 - kalman_gain[choice, t]) * post_variance[choice, t]
+        
+        # Propagate estimates for the non-chosen arm.
+        non_choice = 1 - choice
+        post_mean[non_choice, t+1] = post_mean[non_choice, t]
+        post_variance[non_choice, t+1] = post_variance[non_choice, t]
+        
+        # At session boundaries, reset priors for the next trial.
+        if (t + 1) % trials_per_session == 0:
+            if t + 1 < n_trials:
+                post_mean[:, t+1] = 0
+                post_variance[:, t+1] = initial_variance
+
+    # Record the final trial's state (no update follows the final trial).
+    t = n_trials - 1
+    V_t[t] = post_mean[0, t] - post_mean[1, t]
+    posterior_std_0[t] = post_variance[0, t]
+    posterior_std_1[t] = post_variance[1, t]
+    TU[t] = np.sqrt(post_variance[0, t] + post_variance[1, t])
+    RU[t] = np.sqrt(post_variance[0, t]) - np.sqrt(post_variance[1, t])
+    
+    # Append the computed values as new columns in the dataframe.
+    df['V_t'] = V_t
+    df['posterior_std_0'] = posterior_std_0
+    df['posterior_std_1'] = posterior_std_1
+    df['poster_mean_0'] = post_mean[0, :]
+    df['poster_mean_1'] = post_mean[1, :]
+    df['TU'] = TU
+    df['RU'] = RU
+    
+    return df
+
+
 ##### optimization #####
 ##########################################
 # LOAD DATA
@@ -316,6 +398,12 @@ class HybridAgent_opt:
 df = pd.read_csv('human_data.csv')
 df['state'] = df.index % 8800  # Ensure state values are within range
 df['choice'] = df['choice'].astype(int) - 1  # Convert choice to 0, 1
+
+# Apply the Kalman filter updates to the human data.
+df = apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10)
+
+# save the updated dataframe.
+df.to_csv("kalman_human_data.csv", index=False)
 
 
 def negative_log_likelihood_bandit(opt_params, data, fixed_params, model):
