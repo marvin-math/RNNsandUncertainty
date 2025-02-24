@@ -399,12 +399,6 @@ df = pd.read_csv('human_data.csv')
 df['state'] = df.index % 8800  # Ensure state values are within range
 df['choice'] = df['choice'].astype(int) - 1  # Convert choice to 0, 1
 
-# Apply the Kalman filter updates to the human data.
-df = apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10)
-
-# save the updated dataframe.
-df.to_csv("kalman_human_data.csv", index=False)
-
 
 def negative_log_likelihood_bandit(opt_params, data, fixed_params, model):
     lamda, gamma = opt_params  # Optimized parameters
@@ -551,6 +545,12 @@ for algorithm in algorithms:
 
                 agent.update(action, reward, state)
                 state += 1
+
+# Apply the Kalman filter updates to the human data.
+df = apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10)
+
+# save the updated dataframe.
+df.to_csv("kalman_human_data.csv", index=False)
 
 # Convert data to DataFrames
 df_ucb = pd.DataFrame(data_ucb)

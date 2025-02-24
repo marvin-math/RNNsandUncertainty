@@ -14,6 +14,8 @@ df_rnn_human = pd.read_csv('data/simulation_trained_network_human.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
 df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_more_latents.csv')
+df_human = pd.read_csv('kalman_human_data.csv')
+df_human = df_human.rename(columns={"choice": "Action"})
 
 os.makedirs('plots', exist_ok=True)
 
@@ -213,13 +215,14 @@ UCB = False
 
 # Define your datasets for processing
 datasets = {
-    "Hybrid Model": df_hybrid,
+    #"Hybrid Model": df_hybrid,
     #"Thompson Model": df_thompson,
     # "UCB Model": df_ucb,
-    # "RNN Model": df_rnn_human,
+    "RNN Human": df_rnn_human,
     #"RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
-    "RNN Hybrid": df_rnn_hybrid
+    #"RNN Hybrid": df_rnn_hybrid,
+    "Human Data": df_human
 }
 
 # Process each dataset

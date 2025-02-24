@@ -27,7 +27,7 @@ input_size = 2
 sequence_length = 10
 num_layers = 10
 
-filename = 'data/results_hybrid.csv'
+filename = 'human_data.csv'
 df = pd.read_csv(filename)
 if filename == 'human_data.csv':
     df = df.rename(columns={"choice": "Action", "reward": "Reward"})
@@ -357,5 +357,5 @@ with torch.no_grad():
                 })
                 global_trial += 1
 df_simulation = pd.DataFrame(simulation_data)
-df_simulation.to_csv("data/simulation_RNN_hybrid_more_latents.csv", index=False)
+df_simulation.to_csv("data/simulation_RNN_human_more_latents.csv", index=False)
 print("Simulation complete. Data saved")
