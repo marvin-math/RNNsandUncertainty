@@ -14,7 +14,7 @@
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
-#SBATCH --time=10:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nice=10000
 
  

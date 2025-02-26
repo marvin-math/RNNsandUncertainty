@@ -10,10 +10,10 @@ import os
 df_hybrid = pd.read_csv('data/results_hybrid.csv')
 df_thompson = pd.read_csv('data/results_thompson.csv')
 df_ucb = pd.read_csv('data/results_ucb.csv')
-df_rnn_human = pd.read_csv('data/simulation_RNN_human_optuna.csv')
+df_rnn_human = pd.read_csv('data/simulation_RNN_human_optuna_150k_layerHP_second_try.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
-df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_more_latents.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_26021322.csv')
 df_human = pd.read_csv('kalman_human_data.csv')
 df_human = df_human.rename(columns={"choice": "Action"})
 
@@ -85,8 +85,8 @@ def plot_probit_regression(coeffs, df, title, include_perseverance=True, perseve
         perseverance_val (numeric): Value to use for the perseverance variable during plotting.
     """
     # Fixed values for RU and TU
-    RU_fixed = 0     # You can alternatively use: df['RU'].mean()
-    TU_fixed = 2.5   # You can alternatively use: df['TU'].mean()
+    RU_fixed = df['RU'].mean() #0     # You can alternatively use: df['RU'].mean()
+    TU_fixed = df['TU'].mean() #2.5   # You can alternatively use: df['TU'].mean()
     
     print(title)
     print(f'RU_fixed: {RU_fixed}, TU_fixed: {TU_fixed}')
@@ -215,14 +215,14 @@ UCB = False
 
 # Define your datasets for processing
 datasets = {
-    #"Hybrid Model": df_hybrid,
+    "Hybrid Model": df_hybrid,
     #"Thompson Model": df_thompson,
     # "UCB Model": df_ucb,
-    "RNN_Humans_optuna": df_rnn_human,
+    #"RNN_Humans": df_rnn_human,
     #"RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
-    #"RNN Hybrid": df_rnn_hybrid,
-    "Human Data": df_human
+    "RNN Hybrid smallepochs": df_rnn_hybrid,
+    #"Human Data": df_human
 }
 
 # Process each dataset

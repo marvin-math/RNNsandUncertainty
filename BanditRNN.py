@@ -480,7 +480,7 @@ else:
         print(f"  Final negative log-likelihood: {global_result.fun}\n")
 
 # Step 2: Forward Simulation Using Optimized Parameters
-n_participants = 700
+n_participants = 150
 n_block_per_p = 20
 n_trials_per_block = 10
 reward_array = np.empty([2, n_trials_per_block * n_block_per_p * n_participants], dtype=float)
@@ -556,6 +556,64 @@ df.to_csv("kalman_human_data.csv", index=False)
 df_ucb = pd.DataFrame(data_ucb)
 df_hybrid = pd.DataFrame(data_hybrid)
 df_thompson = pd.DataFrame(data_thompson)
+
+# -----------------------------
+# Compute Log Likelihood for the True Generating Hybrid Model
+# -----------------------------
+
+def compute_log_likelihood(agent_class, data, optimized_params, n_states):
+    """
+    Compute the average log likelihood for the Hybrid agent (true generating model)
+    over the provided data.
+    
+    Parameters:
+        agent_class: The class of the agent (should be HybridAgent_opt).
+        data: A DataFrame containing the simulation data with columns 'State', 'Action', and 'Reward'.
+        optimized_params: A tuple/list with the optimized parameters (beta, gamma) for the Hybrid agent.
+        n_states: Total number of states for the simulation (e.g., n_participants * n_block_per_p * n_trials_per_block).
+        
+    Returns:
+        avg_log_likelihood: The average log likelihood computed over the data.
+    """
+    beta, gamma = optimized_params
+    # Instantiate a new Hybrid agent with the optimized parameters.
+    agent = agent_class(n_states=n_states, beta=beta, gamma=gamma)
+    
+    log_likelihood = 0.0
+    log_likelihoods = []
+
+    # Loop sequentially over all trials (rows) in the data.
+    for idx, row in data.iterrows():
+        state = int(row['State'])
+        choice = int(row['Action'])
+        # Get the probability of choosing action 0 at the current state.
+        prob_0 = agent.get_choice_probs(state)
+        # For the chosen action, use prob_0 if action is 0, or (1 - prob_0) if action is 1.
+        prob = prob_0 if choice == 0 else 1 - prob_0
+        # Accumulate log likelihood (adding a small constant for numerical stability).
+        log_likelihood += np.log(prob + 1e-10)
+        log_likelihoods.append(log_likelihood)
+
+        
+        # Retrieve the reward from data and update the agent.
+        reward = row['Reward']
+        agent.update(choice, reward, state)
+    
+    avg_log_likelihood = log_likelihood / len(data)
+    return avg_log_likelihood, log_likelihoods
+
+
+n_states_sim = n_participants * n_block_per_p * n_trials_per_block
+
+hybrid_optimized_params = optimized_params["HybridAgent_opt"]
+
+hybrid_avg_log_likelihood, trial_log_likelihoods = compute_log_likelihood(HybridAgent_opt, df_hybrid, hybrid_optimized_params, n_states_sim)
+
+print(f"Average Log Likelihood for the True Generating Hybrid Model: {hybrid_avg_log_likelihood:.4f}")
+
+df_hybrid['avglikelihood'] = hybrid_avg_log_likelihood
+df_hybrid['Hybrid_Log_Likelihood'] = trial_log_likelihoods
+
 
 # Define the directory and file paths
 output_dir = "data"
