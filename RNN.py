@@ -11,7 +11,7 @@ import optuna
 from sklearn.model_selection import KFold
 from data_utils import load_preprocess_data, input_size, sequence_length, device
 
-date = "27021145"
+date = "27021320_nopenalty"
 os.makedirs("checkpoints", exist_ok=True)
 
 filename = "data/results_hybrid.csv"
@@ -33,13 +33,12 @@ num_layers = 2
 
 
 
-# -----------------------------
+"""# -----------------------------
 # 1. Compute Target Repetition Rate from Data
 # -----------------------------
 def compute_target_repetition(ys):
-    """
     Compute the fraction of consecutive trials in which the same action occurred.
-    """
+    
     ys_np = ys.squeeze(-1).cpu().numpy().astype(int)  # shape: (seq_length, n_sequences)
     total_same = 0
     total_pairs = 0
@@ -58,10 +57,10 @@ print(f"Target repetition rate in the data: {target_repetition:.3f}")
 # 2. Define the Repetition Incentive Loss Function
 # -----------------------------
 def repetition_incentive_loss(logits, incentive_weight, target_repetition=target_repetition):
-    """
+    
     Computes a loss term that encourages the model's repetition (via softmax similarities)
     to match the target repetition rate observed in the data.
-    """
+    
     probs = F.softmax(logits, dim=-1)  # (seq_len, batch_size, num_classes)
     seq_len = probs.shape[0]
     rep_sum = 0.0
@@ -70,7 +69,7 @@ def repetition_incentive_loss(logits, incentive_weight, target_repetition=target
         rep_sum += sim.mean()
     avg_repetition = rep_sum / (seq_len - 1)
     loss_incentive = incentive_weight * (avg_repetition - target_repetition) ** 2
-    return loss_incentive
+    return loss_incentive"""
 
 # -----------------------------
 # 3. Define the GRU Model
@@ -97,7 +96,7 @@ criterion = nn.CrossEntropyLoss()
 # -----------------------------
 def objective(trial):
     # Suggest hyperparameters
-    incentive_weight = trial.suggest_float('incentive_weight', 0.0, 1.0)
+    #incentive_weight = trial.suggest_float('incentive_weight', 0.0, 1.0)
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
     hidden_size = trial.suggest_int('hidden_size', 1, 200)
     num_layers = trial.suggest_int('num_layers', 1, 10)
@@ -129,8 +128,8 @@ def objective(trial):
                 
                 outputs = model_cv(batch_x)
                 loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-                loss_incentive = repetition_incentive_loss(outputs, incentive_weight)
-                loss = loss_ce + loss_incentive
+                #loss_incentive = repetition_incentive_loss(outputs, incentive_weight)
+                loss = loss_ce #+ loss_incentive
                 
                 optimizer_cv.zero_grad()
                 loss.backward()
@@ -142,8 +141,8 @@ def objective(trial):
             outputs_val = model_cv(xs_val)
             val_batch_y = ys_val.squeeze(-1).long()
             loss_ce_val = criterion(outputs_val.view(-1, num_classes), val_batch_y.view(-1))
-            loss_incentive_val = repetition_incentive_loss(outputs_val, incentive_weight)
-            val_loss = loss_ce_val + loss_incentive_val
+            #loss_incentive_val = repetition_incentive_loss(outputs_val, incentive_weight)
+            val_loss = loss_ce_val #+ loss_incentive_val
             fold_val_losses.append(val_loss.item())
     
     avg_val_loss = np.mean(fold_val_losses)
@@ -163,7 +162,7 @@ if __name__ == "__main__":
     # -----------------------------
     # 5. Final Training on Full Training Set with Best Hyperparameters (with Early Stopping)
     # -----------------------------
-    best_incentive_weight = study.best_params['incentive_weight']
+    #best_incentive_weight = study.best_params['incentive_weight']
     best_learning_rate = study.best_params['learning_rate']
     best_hidden_size = study.best_params['hidden_size']
     best_num_layers = study.best_params['num_layers']
@@ -193,21 +192,20 @@ if __name__ == "__main__":
     epochs_no_improve = 0
 
     for epoch in range(num_epochs_full):
-        permutation = torch.randperm(n_sequences_full)
-        xs_shuffled = xs[:, permutation, :]
-        ys_shuffled = ys[:, permutation, :]
+        xs_ordered = xs  # shape: (seq_length, n_sequences_full, input_size)
+        ys_ordered = ys  # shape: (seq_length, n_sequences_full, 1)
         model_final.train()
         epoch_loss = 0.0
         n_batches = 0
         for i in range(0, n_sequences_full, batch_size):
-            batch_x = xs_shuffled[:, i:i+batch_size, :].to(device)
-            batch_y = ys_shuffled[:, i:i+batch_size, :].to(device)
+            batch_x = xs_ordered[:, i:i+batch_size, :].to(device)
+            batch_y = ys_ordered[:, i:i+batch_size, :].to(device)
             batch_y = batch_y.squeeze(-1).long()
             
             outputs = model_final(batch_x)
             loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
-            loss_incentive = repetition_incentive_loss(outputs, best_incentive_weight)
-            loss = loss_ce + loss_incentive
+            #loss_incentive = repetition_incentive_loss(outputs, best_incentive_weight)
+            loss = loss_ce #+ loss_incentive
             
             optimizer_final.zero_grad()
             loss.backward()
@@ -225,8 +223,8 @@ if __name__ == "__main__":
         with torch.no_grad():
             outputs_test = model_final(xs_test)
             test_loss_ce = criterion(outputs_test.view(-1, num_classes), ys_test.squeeze(-1).long().view(-1))
-            test_loss_incentive = repetition_incentive_loss(outputs_test, best_incentive_weight)
-            test_loss = test_loss_ce + test_loss_incentive
+            #test_loss_incentive = repetition_incentive_loss(outputs_test, best_incentive_weight)
+            test_loss = test_loss_ce #+ test_loss_incentive
         test_loss_history.append(test_loss.item())
         
         # -----------------------------
@@ -258,7 +256,7 @@ if __name__ == "__main__":
     plt.plot(test_loss_history, label='Test Loss')
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title(f"Training and Test Loss (Best Incentive Weight = {best_incentive_weight:.3f})")
+    plt.title(f"Training and Test Loss)")
     plt.legend()
     save_path = os.path.join('plots', f"trainvstestLoss{date}.png")
     plt.savefig(save_path)
@@ -443,7 +441,7 @@ if __name__ == "__main__":
                         "Kalman_kalman_gain_1": kalman_gain[1][trial],
                         "RU": RU[trial],
                         "TU": TU[trial],
-                        "best_penalty_weight": best_incentive_weight,
+                        #"best_penalty_weight": best_incentive_weight,
                         "num_layers": best_num_layers,
                         "batch_size": batch_size,
                         "average_loss": np.mean(loss_history),

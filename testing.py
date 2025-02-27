@@ -10,7 +10,7 @@ from data_utils import load_preprocess_data
 
 # load data
 filename = 'data/results_hybrid.csv'
-date = '27021145'
+date = '27021320_nopenalty'
 xs, ys, xs_test, ys_test = load_preprocess_data(filename)
 
 optimized_params = {
@@ -35,7 +35,7 @@ df_human = pd.read_csv('kalman_human_data.csv')
 df_human = df_human.rename(columns={"choice": "Action"})
 
 model_final = GRUModel(input_size, best_hidden_size, best_num_layers, num_classes).to(device)
-checkpoint_path = f"checkpoints/{date}model_epoch_18.pth"  # Replace with your checkpoint
+checkpoint_path = f"checkpoints/{date}model_epoch_16.pth"  # Replace with your checkpoint
 model_final.load_state_dict(torch.load(checkpoint_path))
 model_final.eval()
 
@@ -44,7 +44,14 @@ with torch.no_grad():
     # Get the logits from the model for the training data
     outputs_train = model_final(xs)
     # Convert logits to predicted class indices (0 or 1)
-    predicted_train = torch.argmax(outputs_train, dim=-1)  # shape: (seq_length, n_sequences)
+    # Transform logits to probabilities using softmax
+    probs_train = F.softmax(outputs_train, dim=-1)  # same shape as outputs_train
+    
+    # Sample an action from the probability distribution for each trial and sequence
+    # Reshape probabilities to 2D: (seq_length*n_sequences, num_classes)
+    probs_2d = probs_train.reshape(-1, probs_train.shape[-1])
+    # Sample one action for each trial
+    predicted_train = torch.multinomial(probs_2d, num_samples=1).reshape(outputs_train.shape[0], outputs_train.shape[1])
     # Get the true labels (squeeze the last dim)
     actual_train = ys.squeeze(-1).long()  # shape: (seq_length, n_sequences)
 
@@ -54,6 +61,7 @@ print("Predicted labels (first 5 sequences):")
 print(predicted_train[:, :5].cpu().numpy())
 print("Actual labels (first 5 sequences):")
 print(actual_train[:, :5].cpu().numpy())
+print(f"Predicted shape: {predicted_train.shape}, Actual shape: {actual_train.shape}")
 
 # Compute accuracy across all training trials
 accuracy = (predicted_train == actual_train).float().mean().item()
