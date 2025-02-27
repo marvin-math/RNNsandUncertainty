@@ -1,6 +1,63 @@
 from BanditRNN import HybridAgent_opt, UCBAgent, ThompsonAgent
 import numpy as np
+import os
 import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from RNN import GRUModel, num_classes, input_size, device
+from data_utils import load_preprocess_data
+
+# load data
+filename = 'data/results_hybrid.csv'
+date = '27021145'
+xs, ys, xs_test, ys_test = load_preprocess_data(filename)
+
+optimized_params = {
+    "HybridAgent_opt": [1, 1],
+    "UCBAgent": [2, 2]}
+
+#load optimized hyperparameters
+csv_path = os.path.join("optimized_parameters", f"optimized_hyperparams_{date}.csv")
+df_params = pd.read_csv(csv_path)
+best_hidden_size = int(df_params['hidden_size'].iloc[0])
+best_num_layers = int(df_params['num_layers'].iloc[0])
+
+# Load datasets
+df_hybrid = pd.read_csv('data/results_hybrid.csv')
+df_thompson = pd.read_csv('data/results_thompson.csv')
+df_ucb = pd.read_csv('data/results_ucb.csv')
+df_rnn_human = pd.read_csv('data/simulation_RNN_human_optuna_150k_layerHP_second_try.csv')
+df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
+df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_26022135.csv')
+df_human = pd.read_csv('kalman_human_data.csv')
+df_human = df_human.rename(columns={"choice": "Action"})
+
+model_final = GRUModel(input_size, best_hidden_size, best_num_layers, num_classes).to(device)
+checkpoint_path = f"checkpoints/{date}model_epoch_18.pth"  # Replace with your checkpoint
+model_final.load_state_dict(torch.load(checkpoint_path))
+model_final.eval()
+
+
+with torch.no_grad():
+    # Get the logits from the model for the training data
+    outputs_train = model_final(xs)
+    # Convert logits to predicted class indices (0 or 1)
+    predicted_train = torch.argmax(outputs_train, dim=-1)  # shape: (seq_length, n_sequences)
+    # Get the true labels (squeeze the last dim)
+    actual_train = ys.squeeze(-1).long()  # shape: (seq_length, n_sequences)
+
+# Print out a few predictions vs. the actual values
+print("Sanity Check: Predictions on Training Data")
+print("Predicted labels (first 5 sequences):")
+print(predicted_train[:, :5].cpu().numpy())
+print("Actual labels (first 5 sequences):")
+print(actual_train[:, :5].cpu().numpy())
+
+# Compute accuracy across all training trials
+accuracy = (predicted_train == actual_train).float().mean().item()
+print(f"Training Prediction Accuracy: {accuracy:.4f}")
 
 
 # -----------------------------
@@ -70,18 +127,18 @@ def compute_pseudo_r2(agent_class, data, optimized_params, n_states):
 # Compute and Report Pseudo R^2 for Simulation Data
 # -----------------------------
 
-df_RNN_hybrid = pd.read_csv('data/simulation_RNN_hybrid_26021359_smallerbatch.csv')
+df_RNN_hybrid = pd.read_csv('data/simulation_RNN_hybrid_27021145.csv')
 # Total number of states in the simulation (as used above)
-n_states_sim = n_participants * n_block_per_p * n_trials_per_block
+n_states_sim = len(df_RNN_hybrid)
 
 # For HybridAgent_opt, use the optimized parameters from earlier.
-pseudo_r2_hybrid = compute_pseudo_r2(HybridAgent_opt, df_hybrid, optimized_params["HybridAgent_opt"], n_states_sim)
+pseudo_r2_hybrid = compute_pseudo_r2(HybridAgent_opt, df_RNN_hybrid, optimized_params["HybridAgent_opt"], n_states_sim)
 print(f"Pseudo R^2 for HybridAgent_opt: {pseudo_r2_hybrid:.4f}")
 
 # For UCBAgent, we used a fixed parameter set in simulation ([lamda, gamma] = [0.1, 0]).
-pseudo_r2_ucb = compute_pseudo_r2(UCBAgent, df_ucb, [0.1, 0], n_states_sim)
+pseudo_r2_ucb = compute_pseudo_r2(UCBAgent, df_RNN_hybrid, optimized_params["UCBAgent"], n_states_sim)
 print(f"Pseudo R^2 for UCBAgent: {pseudo_r2_ucb:.4f}")
 
 # For ThompsonAgent, no optimization parameters are needed.
-pseudo_r2_thompson = compute_pseudo_r2(ThompsonAgent, df_thompson, None, n_states_sim)
+pseudo_r2_thompson = compute_pseudo_r2(ThompsonAgent, df_RNN_hybrid, None, n_states_sim)
 print(f"Pseudo R^2 for ThompsonAgent: {pseudo_r2_thompson:.4f}")

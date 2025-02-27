@@ -434,7 +434,7 @@ def negative_log_likelihood_bandit(opt_params, data, fixed_params, model):
 
     return nll
 
-if OPTIMIZE_PER_PARTICIPANT:
+"""if OPTIMIZE_PER_PARTICIPANT:
     # Optimize separately for each participant.
     results_per_participant = {}
     for subject, subject_data in df.groupby('subject'):
@@ -477,149 +477,152 @@ else:
         optimized_params[model.__name__] = global_result.x  # Store optimized parameters
 
         print(f"  Optimized parameters for {model.__name__}: {global_result.x}")
-        print(f"  Final negative log-likelihood: {global_result.fun}\n")
+        print(f"  Final negative log-likelihood: {global_result.fun}\n")"""
 
-# Step 2: Forward Simulation Using Optimized Parameters
-n_participants = 150
-n_block_per_p = 20
-n_trials_per_block = 10
-reward_array = np.empty([2, n_trials_per_block * n_block_per_p * n_participants], dtype=float)
+if __name__ == "__main__":
 
-data_ucb = []
-data_hybrid = []
-data_thompson = []
+  # Step 2: Forward Simulation Using Optimized Parameters
+  n_participants = 150
+  n_block_per_p = 20
+  n_trials_per_block = 10
+  reward_array = np.empty([2, n_trials_per_block * n_block_per_p * n_participants], dtype=float)
 
-algorithms = ["ucb", "hybrid", "thompson"]
+  data_ucb = []
+  data_hybrid = []
+  data_thompson = []
 
-for algorithm in algorithms:
-    state = 0
+  algorithms = ["ucb", "hybrid", "thompson"]
 
-    for participant in range(n_participants):
-        # Retrieve optimized parameters
-        if algorithm == "ucb":
-            lamda, gamma = [0.1,0]#optimized_params["UCBAgent"]
-            agent = UCBAgent(lamda=lamda, gamma=gamma, n_states=n_participants * n_block_per_p * n_trials_per_block)
-        elif algorithm == "hybrid":
-            beta, gamma = optimized_params["HybridAgent_opt"]
-            agent = HybridAgent_opt(beta=beta, gamma=gamma, n_states=n_participants * n_block_per_p * n_trials_per_block)
-        else:  # Thompson agent does not need optimization
-            agent = ThompsonAgent(n_states=n_participants * n_block_per_p * n_trials_per_block)
+  for algorithm in algorithms:
+      state = 0
 
-        for block in range(n_block_per_p):
-            mean_reward_block = np.random.normal(0, np.sqrt(agent.innov_variance), agent._n_actions)
-            
-            for trial in range(n_trials_per_block):
-                # Define the environment
-                reward = np.random.normal(mean_reward_block, np.sqrt(agent.noise_variance), agent._n_actions)
+      for participant in range(n_participants):
+          # Retrieve optimized parameters
+          if algorithm == "ucb":
+              lamda, gamma = [2,2]#optimized_params["UCBAgent"]
+              agent = UCBAgent(lamda=lamda, gamma=gamma, n_states=n_participants * n_block_per_p * n_trials_per_block)
+          elif algorithm == "hybrid":
+              beta, gamma = [1,1]#optimized_params["HybridAgent_opt"]
+              agent = HybridAgent_opt(beta=beta, gamma=gamma, n_states=n_participants * n_block_per_p * n_trials_per_block)
+          else:  # Thompson agent does not need optimization
+              agent = ThompsonAgent(n_states=n_participants * n_block_per_p * n_trials_per_block)
 
-                # Run the agent in the environment
-                action = agent.get_choice(state)
-                reward = reward[action]
+          for block in range(n_block_per_p):
+              mean_reward_block = np.random.normal(0, np.sqrt(agent.innov_variance), agent._n_actions)
+              
+              for trial in range(n_trials_per_block):
+                  # Define the environment
+                  reward = np.random.normal(mean_reward_block, np.sqrt(agent.noise_variance), agent._n_actions)
 
-                # Append the results to the data list
-                data_entry = {
-                    'Participant': participant,
-                    'Block': block,
-                    'Trial': trial,
-                    'State': state,
-                    'Action': action,
-                    'Reward': reward,
-                    'V_t': agent.V_t[state],
-                    'posterior_std_0': agent.post_variance[0][state],
-                    'posterior_std_1': agent.post_variance[1][state],
-                    'poster_mean_0': agent.post_mean[0][state],
-                    'poster_mean_1': agent.post_mean[1][state],
-                    'TU': np.sqrt(agent.post_variance[0][state] + agent.post_variance[1][state]),
-                    'RU': np.sqrt(agent.post_variance[0][state]) - np.sqrt(agent.post_variance[1][state])
-                }
+                  # Run the agent in the environment
+                  action = agent.get_choice(state)
+                  reward = reward[action]
 
-                if algorithm == "thompson":
-                    data_entry['P_a0_thompson'] = agent.get_choice_probs(state)
-                    data_thompson.append(data_entry)
-                elif algorithm == "ucb":
-                    data_entry['P_a0_ucb'] = agent.get_choice_probs(state)
-                    data_ucb.append(data_entry)
-                else:  # hybrid
-                    data_entry['P_a0_hybrid'] = agent.get_choice_probs(state)
-                    data_hybrid.append(data_entry)
+                  # Append the results to the data list
+                  data_entry = {
+                      'Participant': participant,
+                      'Block': block,
+                      'Trial': trial,
+                      'State': state,
+                      'Action': action,
+                      'Reward': reward,
+                      'V_t': agent.V_t[state],
+                      'posterior_std_0': agent.post_variance[0][state],
+                      'posterior_std_1': agent.post_variance[1][state],
+                      'poster_mean_0': agent.post_mean[0][state],
+                      'poster_mean_1': agent.post_mean[1][state],
+                      'TU': np.sqrt(agent.post_variance[0][state] + agent.post_variance[1][state]),
+                      'RU': np.sqrt(agent.post_variance[0][state]) - np.sqrt(agent.post_variance[1][state])
+                  }
 
-                agent.update(action, reward, state)
-                state += 1
+                  if algorithm == "thompson":
+                      data_entry['P_a0_thompson'] = agent.get_choice_probs(state)
+                      data_thompson.append(data_entry)
+                  elif algorithm == "ucb":
+                      data_entry['P_a0_ucb'] = agent.get_choice_probs(state)
+                      data_ucb.append(data_entry)
+                  else:  # hybrid
+                      data_entry['P_a0_hybrid'] = agent.get_choice_probs(state)
+                      data_hybrid.append(data_entry)
 
-# Apply the Kalman filter updates to the human data.
-df = apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10)
+                  agent.update(action, reward, state)
+                  state += 1
 
-# save the updated dataframe.
-df.to_csv("kalman_human_data.csv", index=False)
+  # Apply the Kalman filter updates to the human data.
+  df = apply_kalman_filter_to_human_data(df, noise_variance=10, initial_variance=5, trials_per_session=10)
 
-# Convert data to DataFrames
-df_ucb = pd.DataFrame(data_ucb)
-df_hybrid = pd.DataFrame(data_hybrid)
-df_thompson = pd.DataFrame(data_thompson)
+  # save the updated dataframe.
+  df.to_csv("kalman_human_data.csv", index=False)
 
-# -----------------------------
-# Compute Log Likelihood for the True Generating Hybrid Model
-# -----------------------------
+  # Convert data to DataFrames
+  df_ucb = pd.DataFrame(data_ucb)
+  df_hybrid = pd.DataFrame(data_hybrid)
+  df_thompson = pd.DataFrame(data_thompson)
 
-def compute_log_likelihood(agent_class, data, optimized_params, n_states):
-    """
-    Compute the average log likelihood for the Hybrid agent (true generating model)
-    over the provided data.
-    
-    Parameters:
-        agent_class: The class of the agent (should be HybridAgent_opt).
-        data: A DataFrame containing the simulation data with columns 'State', 'Action', and 'Reward'.
-        optimized_params: A tuple/list with the optimized parameters (beta, gamma) for the Hybrid agent.
-        n_states: Total number of states for the simulation (e.g., n_participants * n_block_per_p * n_trials_per_block).
-        
-    Returns:
-        avg_log_likelihood: The average log likelihood computed over the data.
-    """
-    beta, gamma = optimized_params
-    # Instantiate a new Hybrid agent with the optimized parameters.
-    agent = agent_class(n_states=n_states, beta=beta, gamma=gamma)
-    
-    log_likelihood = 0.0
-    log_likelihoods = []
+  # -----------------------------
+  # Compute Log Likelihood for the True Generating Hybrid Model
+  # -----------------------------
 
-    # Loop sequentially over all trials (rows) in the data.
-    for idx, row in data.iterrows():
-        state = int(row['State'])
-        choice = int(row['Action'])
-        # Get the probability of choosing action 0 at the current state.
-        prob_0 = agent.get_choice_probs(state)
-        # For the chosen action, use prob_0 if action is 0, or (1 - prob_0) if action is 1.
-        prob = prob_0 if choice == 0 else 1 - prob_0
-        # Accumulate log likelihood (adding a small constant for numerical stability).
-        log_likelihood += np.log(prob + 1e-10)
-        log_likelihoods.append(log_likelihood)
+  def compute_log_likelihood(agent_class, data, optimized_params, n_states):
+      """
+      Compute the average log likelihood for the Hybrid agent (true generating model)
+      over the provided data.
+      
+      Parameters:
+          agent_class: The class of the agent (should be HybridAgent_opt).
+          data: A DataFrame containing the simulation data with columns 'State', 'Action', and 'Reward'.
+          optimized_params: A tuple/list with the optimized parameters (beta, gamma) for the Hybrid agent.
+          n_states: Total number of states for the simulation (e.g., n_participants * n_block_per_p * n_trials_per_block).
+          
+      Returns:
+          avg_log_likelihood: The average log likelihood computed over the data.
+      """
+      beta, gamma = optimized_params
+      # Instantiate a new Hybrid agent with the optimized parameters.
+      agent = agent_class(n_states=n_states, beta=beta, gamma=gamma)
+      
+      log_likelihood = 0.0
+      log_likelihoods = []
 
-        
-        # Retrieve the reward from data and update the agent.
-        reward = row['Reward']
-        agent.update(choice, reward, state)
-    
-    avg_log_likelihood = log_likelihood / len(data)
-    return avg_log_likelihood, log_likelihoods
+      # Loop sequentially over all trials (rows) in the data.
+      for idx, row in data.iterrows():
+          state = int(row['State'])
+          choice = int(row['Action'])
+          # Get the probability of choosing action 0 at the current state.
+          prob_0 = agent.get_choice_probs(state)
+          # For the chosen action, use prob_0 if action is 0, or (1 - prob_0) if action is 1.
+          prob = prob_0 if choice == 0 else 1 - prob_0
+          # Accumulate log likelihood (adding a small constant for numerical stability).
+          log_likelihood += np.log(prob + 1e-10)
+          log_likelihoods.append(log_likelihood)
 
-
-n_states_sim = n_participants * n_block_per_p * n_trials_per_block
-
-hybrid_optimized_params = optimized_params["HybridAgent_opt"]
-
-hybrid_avg_log_likelihood, trial_log_likelihoods = compute_log_likelihood(HybridAgent_opt, df_hybrid, hybrid_optimized_params, n_states_sim)
-
-print(f"Average Log Likelihood for the True Generating Hybrid Model: {hybrid_avg_log_likelihood:.4f}")
-
-df_hybrid['avglikelihood'] = hybrid_avg_log_likelihood
-df_hybrid['Hybrid_Log_Likelihood'] = trial_log_likelihoods
+          
+          # Retrieve the reward from data and update the agent.
+          reward = row['Reward']
+          agent.update(choice, reward, state)
+      
+      avg_log_likelihood = log_likelihood / len(data)
+      return avg_log_likelihood, log_likelihoods
 
 
-# Define the directory and file paths
-output_dir = "data"
-os.makedirs(output_dir, exist_ok=True)
 
-df_ucb.to_csv(os.path.join(output_dir, "results_ucb.csv"), index=False)
-df_hybrid.to_csv(os.path.join(output_dir, "results_hybrid.csv"), index=False)
-df_thompson.to_csv(os.path.join(output_dir, "results_thompson.csv"), index=False)
+  n_states_sim = n_participants * n_block_per_p * n_trials_per_block
+
+  hybrid_optimized_params = [1,1] #optimized_params["HybridAgent_opt"]
+
+  hybrid_avg_log_likelihood, trial_log_likelihoods = compute_log_likelihood(HybridAgent_opt, df_hybrid, hybrid_optimized_params, n_states_sim)
+
+  print(f"Average Log Likelihood for the True Generating Hybrid Model: {hybrid_avg_log_likelihood:.4f}")
+
+  df_hybrid['avglikelihood'] = hybrid_avg_log_likelihood
+  df_hybrid['Hybrid_Log_Likelihood'] = trial_log_likelihoods
+
+
+  # Define the directory and file paths
+  output_dir = "data"
+  os.makedirs(output_dir, exist_ok=True)
+
+  df_ucb.to_csv(os.path.join(output_dir, "results_ucb.csv"), index=False)
+  df_hybrid.to_csv(os.path.join(output_dir, "results_hybrid.csv"), index=False)
+  df_thompson.to_csv(os.path.join(output_dir, "results_thompson.csv"), index=False)
 
