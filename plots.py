@@ -13,7 +13,7 @@ df_ucb = pd.read_csv('data/results_ucb.csv')
 df_rnn_human = pd.read_csv('data/simulation_RNN_human_optuna_150k_layerHP_second_try.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
-df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_27021320_nopenalty.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_2702280840_noloss.csv')
 df_human = pd.read_csv('kalman_human_data.csv')
 df_human = df_human.rename(columns={"choice": "Action"})
 
@@ -216,7 +216,7 @@ datasets = {
     #"RNN_Humans": df_rnn_human,
     #"RNN Thompson": df_rnn_thompson,
     # "RNN UCB": df_rnn_ucb,
-    "RNN Hybrid overfit": df_rnn_hybrid,
+    "RNN Hybrid noloss": df_rnn_hybrid,
     #"Human Data": df_human
 }
 

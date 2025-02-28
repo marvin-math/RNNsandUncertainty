@@ -532,7 +532,9 @@ if __name__ == "__main__":
                       'poster_mean_0': agent.post_mean[0][state],
                       'poster_mean_1': agent.post_mean[1][state],
                       'TU': np.sqrt(agent.post_variance[0][state] + agent.post_variance[1][state]),
-                      'RU': np.sqrt(agent.post_variance[0][state]) - np.sqrt(agent.post_variance[1][state])
+                      'RU': np.sqrt(agent.post_variance[0][state]) - np.sqrt(agent.post_variance[1][state]),
+                      'mean_reward_arm0': mean_reward_block[0],
+                      'mean_reward_arm1': mean_reward_block[1]
                   }
 
                   if algorithm == "thompson":

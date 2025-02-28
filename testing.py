@@ -10,7 +10,7 @@ from data_utils import load_preprocess_data
 
 # load data
 filename = 'data/results_hybrid.csv'
-date = '27021320_nopenalty'
+date = '27021458_hiddenpropagation'
 xs, ys, xs_test, ys_test = load_preprocess_data(filename)
 
 optimized_params = {
@@ -30,19 +30,19 @@ df_ucb = pd.read_csv('data/results_ucb.csv')
 df_rnn_human = pd.read_csv('data/simulation_RNN_human_optuna_150k_layerHP_second_try.csv')
 df_rnn_thompson = pd.read_csv('data/simulation_trained_network_thompson2.csv')
 df_rnn_ucb = pd.read_csv('data/simulation_trained_network_ucb.csv')
-df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_26022135.csv')
+df_rnn_hybrid = pd.read_csv('data/simulation_RNN_hybrid_27021458_hiddenpropagation.csv')
 df_human = pd.read_csv('kalman_human_data.csv')
 df_human = df_human.rename(columns={"choice": "Action"})
 
 model_final = GRUModel(input_size, best_hidden_size, best_num_layers, num_classes).to(device)
-checkpoint_path = f"checkpoints/{date}model_epoch_16.pth"  # Replace with your checkpoint
+checkpoint_path = f"checkpoints/{date}model_epoch_17.pth"  # Replace with your checkpoint
 model_final.load_state_dict(torch.load(checkpoint_path))
 model_final.eval()
 
 
 with torch.no_grad():
     # Get the logits from the model for the training data
-    outputs_train = model_final(xs)
+    outputs_train,_ = model_final(xs, h0=None)  # shape: (seq_length, n_sequences, num_classes)
     # Convert logits to predicted class indices (0 or 1)
     # Transform logits to probabilities using softmax
     probs_train = F.softmax(outputs_train, dim=-1)  # same shape as outputs_train
@@ -135,18 +135,17 @@ def compute_pseudo_r2(agent_class, data, optimized_params, n_states):
 # Compute and Report Pseudo R^2 for Simulation Data
 # -----------------------------
 
-df_RNN_hybrid = pd.read_csv('data/simulation_RNN_hybrid_27021145.csv')
 # Total number of states in the simulation (as used above)
-n_states_sim = len(df_RNN_hybrid)
+n_states_sim = len(df_rnn_hybrid)
 
 # For HybridAgent_opt, use the optimized parameters from earlier.
-pseudo_r2_hybrid = compute_pseudo_r2(HybridAgent_opt, df_RNN_hybrid, optimized_params["HybridAgent_opt"], n_states_sim)
+pseudo_r2_hybrid = compute_pseudo_r2(HybridAgent_opt, df_rnn_hybrid, optimized_params["HybridAgent_opt"], n_states_sim)
 print(f"Pseudo R^2 for HybridAgent_opt: {pseudo_r2_hybrid:.4f}")
 
 # For UCBAgent, we used a fixed parameter set in simulation ([lamda, gamma] = [0.1, 0]).
-pseudo_r2_ucb = compute_pseudo_r2(UCBAgent, df_RNN_hybrid, optimized_params["UCBAgent"], n_states_sim)
+pseudo_r2_ucb = compute_pseudo_r2(UCBAgent, df_rnn_hybrid, optimized_params["UCBAgent"], n_states_sim)
 print(f"Pseudo R^2 for UCBAgent: {pseudo_r2_ucb:.4f}")
 
 # For ThompsonAgent, no optimization parameters are needed.
-pseudo_r2_thompson = compute_pseudo_r2(ThompsonAgent, df_RNN_hybrid, None, n_states_sim)
+pseudo_r2_thompson = compute_pseudo_r2(ThompsonAgent, df_rnn_hybrid, None, n_states_sim)
 print(f"Pseudo R^2 for ThompsonAgent: {pseudo_r2_thompson:.4f}")

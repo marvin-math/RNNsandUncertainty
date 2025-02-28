@@ -11,7 +11,7 @@ import optuna
 from sklearn.model_selection import KFold
 from data_utils import load_preprocess_data, input_size, sequence_length, device
 
-date = "27021320_nopenalty"
+date = "2702280840_noloss"
 os.makedirs("checkpoints", exist_ok=True)
 
 filename = "data/results_hybrid.csv"
@@ -82,12 +82,14 @@ class GRUModel(nn.Module):
         self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=False)
         self.fc = nn.Linear(hidden_size, num_classes)
 
-    def forward(self, x):
-        # Initialize hidden state for GRU
-        h0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
-        out, _ = self.gru(x, h0)
+    def forward(self, x, h0=None):
+        # If no hidden state is provided, initialize it to zeros.
+        if h0 is None:
+            h0 = torch.zeros(self.num_layers, x.size(1), self.hidden_size).to(device)
+        out, hn = self.gru(x, h0)
         out = self.fc(out)
-        return out
+        return out, hn
+
 
 criterion = nn.CrossEntropyLoss()
 
@@ -126,7 +128,8 @@ def objective(trial):
                 batch_y = ys_shuffled[:, i:i+batch_size, :].to(device)
                 batch_y = batch_y.squeeze(-1).long()
                 
-                outputs = model_cv(batch_x)
+                outputs, hidden = model_cv(batch_x)
+                hidden = hidden.detach()
                 loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
                 #loss_incentive = repetition_incentive_loss(outputs, incentive_weight)
                 loss = loss_ce #+ loss_incentive
@@ -138,7 +141,7 @@ def objective(trial):
         # Evaluation on the validation fold
         model_cv.eval()
         with torch.no_grad():
-            outputs_val = model_cv(xs_val)
+            outputs_val, _ = model_cv(xs_val, h0=None)
             val_batch_y = ys_val.squeeze(-1).long()
             loss_ce_val = criterion(outputs_val.view(-1, num_classes), val_batch_y.view(-1))
             #loss_incentive_val = repetition_incentive_loss(outputs_val, incentive_weight)
@@ -197,12 +200,21 @@ if __name__ == "__main__":
         model_final.train()
         epoch_loss = 0.0
         n_batches = 0
+        hidden = None
+
         for i in range(0, n_sequences_full, batch_size):
             batch_x = xs_ordered[:, i:i+batch_size, :].to(device)
             batch_y = ys_ordered[:, i:i+batch_size, :].to(device)
             batch_y = batch_y.squeeze(-1).long()
+
+                    # If the current batch size differs from that of the hidden state, reinitialize hidden state.
+            if hidden is not None and hidden.size(1) != batch_x.size(1):
+                hidden = torch.zeros(model_final.num_layers, batch_x.size(1), model_final.hidden_size).to(device)
             
-            outputs = model_final(batch_x)
+            # Forward pass with the previous hidden state.
+            outputs, hidden = model_final(batch_x, hidden)
+            # Detach hidden state so gradients don't backpropagate across batches.
+            hidden = hidden.detach()
             loss_ce = criterion(outputs.view(-1, num_classes), batch_y.view(-1))
             #loss_incentive = repetition_incentive_loss(outputs, best_incentive_weight)
             loss = loss_ce #+ loss_incentive
@@ -221,7 +233,7 @@ if __name__ == "__main__":
         # -----------------------------
         model_final.eval()
         with torch.no_grad():
-            outputs_test = model_final(xs_test)
+            outputs_test, _ = model_final(xs_test, h0 = None)
             test_loss_ce = criterion(outputs_test.view(-1, num_classes), ys_test.squeeze(-1).long().view(-1))
             #test_loss_incentive = repetition_incentive_loss(outputs_test, best_incentive_weight)
             test_loss = test_loss_ce #+ test_loss_incentive
@@ -301,7 +313,7 @@ if __name__ == "__main__":
         """
         model.eval()
         with torch.no_grad():
-            outputs = model(xs_data)  # shape: (seq_length, num_sequences, num_classes)
+            outputs, _ = model(xs_data, h0=None)
             log_probs = F.log_softmax(outputs, dim=-1)  # convert logits to log probabilities
 
             # Flatten the first two dimensions (trials x sequences)
@@ -384,7 +396,8 @@ if __name__ == "__main__":
                 kalman_gain = np.zeros((2, n_states))
                 
                 for trial in range(n_trials_per_block):
-                    outputs = model_final(input_seq)  # (n_trials, 1, num_classes)
+                    outputs, _ = model_final(input_seq, h0=None)  # (n_trials, 1, num_classes)
+
                     logits_t = outputs[trial, 0, :]  
                     probs_t = F.softmax(logits_t, dim=0).detach().cpu().numpy()
                     rnn_action = np.random.choice([0, 1], p=probs_t)
